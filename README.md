@@ -59,7 +59,7 @@ Sem eles, o app continua funcionando no modo WebView original, mas os recursos n
 
 # Versão Desktop
 
-Modificação do app Electron do Nerimity para corrigir **compartilhamento de tela no Wayland**, implementar **TTS para ler o chat da chamada** e melhorar o **system tray** em distros onde ele não aparecia corretamente.
+Modificação do app Electron do Nerimity para corrigir compartilhamento de tela no Wayland, implementar TTS para ler o chat da chamada, melhorar o system tray em distros onde ele não aparecia corretamente e adicionar captura de áudio de aplicativos abertos durante a transmissão de tela. Ao compartilhar com áudio, você pode escolher quais aplicativos terão o som transmitido, evitando vazar o áudio do próprio Nerimity; se o app não aparecer na lista, basta clicar em “Verificar novamente” e, se nenhum app for selecionado, a transmissão usa o áudio padrão do sistema.
 
 Baseado no wrapper desktop do Nerimity, mantendo o site oficial `https://nerimity.com` carregado no app.
 

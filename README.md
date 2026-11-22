@@ -10,8 +10,6 @@ Versões modificadas do Nerimity mantendo o site oficial `https://nerimity.com` 
 Baixe o **AppImage**, o **Flatpak** ou o **APK Android** aqui:  
 👉 **[MediaFire - Pasta Nerimity](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)**
 
-Código-fonte: https://www.mediafire.com/file/m3he99qywlsqlpw/nerimityV2.zip/file
-
 ## Créditos
 
 - **Versão Android:** [NerimityReactNative](https://github.com/Nerimity/NerimityReactNative)

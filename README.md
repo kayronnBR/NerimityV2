@@ -1,15 +1,69 @@
-# Nerimity V2
-coding source:
-https://www.mediafire.com/file/m3he99qywlsqlpw/nerimityV2.zip/file
+# Nerimity V2 — Android + Desktop
+
+Versões modificadas do Nerimity mantendo o site oficial `https://nerimity.com` carregado:
+
+- **Android (React Native):** chamadas com WebRTC nativo, vídeo recebido, compartilhamento de tela e controles de áudio.
+- **Desktop (Electron/Linux):** correção de compartilhamento de tela no Wayland, TTS da chamada e system tray.
+
+## Download
+
+Baixe o **AppImage**, o **Flatpak** ou o **APK Android** aqui:  
+👉 **[MediaFire - Pasta Nerimity](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)**
+
+Código-fonte: https://www.mediafire.com/file/m3he99qywlsqlpw/nerimityV2.zip/file
+
+## Créditos
+
+- **Versão Android:** [NerimityReactNative](https://github.com/Nerimity/NerimityReactNative)
+- **Versão Desktop:** [nerimity-desktop](https://github.com/Nerimity/nerimity-desktop)
+
+Todas as modificações descritas abaixo foram feitas sobre esses projetos originais.
+
+---
+
+# Versão Android
+
+Baseada no Nerimity React Native 2.2.0. Para usar vídeo, tela e compartilhamento, ative os dois experimentos no app:
+
+- **React Native Native WebSocket**
+- **React Native Native WebRTC**
+
+Sem eles, o app continua funcionando no modo WebView original, mas os recursos nativos de chamada não aparecem.
+
+## Principais mudanças (Android)
+
+- **Vídeo/tela recebida:** renderização com `RTCView` do `react-native-webrtc`. Corrigido o bug em que a stream chegava e era apagada quando a conexão do peer completava.
+- **Troca entre transmissões:** visualização grande por vez, com setas, contador (`1/3`) e botões com o nome de cada pessoa. Transmissões antigas do mesmo usuário são substituídas, sem duplicatas com o mesmo nome.
+- **Som da transmissão:** botão `Sound: On / Sound: Off` controla o áudio da transmissão selecionada, sem afetar o áudio da chamada.
+- **Tela cheia:** botão `Fullscreen`; os controles aparecem ao abrir e somem após 4 segundos. Tocando no vídeo eles voltam. Botão `Close` com texto branco e fundo translúcido.
+- **Mensagem de voz:** o microfone ao lado de GIF/emoji virou clique para gravar e clique para parar (não precisa segurar).
+- **Compartilhar tela pelo celular:** botão `Share Screen / Stop Sharing` usa `MediaProjection` do Android e envia a tela para todos os participantes. Quem entrar depois também recebe. Ao parar ou sair da chamada, a captura é encerrada. Requer os dois experimentos nativos ativos; no modo WebView o botão não aparece.
+- **Microfone:** botão `Mic: On / Mic: Off` silencia no sistema e desliga a faixa de áudio WebRTC enviada aos outros.
+- **Saída de áudio:** botão `Output: ...` mostra e alterna entre as saídas disponíveis — `Bluetooth`, `Wired Headset`, `Speaker` e `Earpiece`. Permissões Bluetooth declaradas e solicitadas no Android 12+; roteamento automático restaurado para que o fone tenha prioridade.
+- **Sensor de proximidade:** ativo apenas no modo ouvido (sem fone e sem viva-voz). Fica desligado com fone Bluetooth, fone com fio ou viva-voz, para a tela não apagar sem motivo.
+- **Tela acesa:** `KEEP_SCREEN_ON` mantido durante toda a chamada.
+- **Controles:** botões em scroll horizontal, para não ficarem apertados em telas pequenas.
+
+> O Android captura apenas o vídeo da tela. Áudio do sistema não é enviado (isso só existe na versão desktop).
+
+## Instalar no Android
+
+1. Baixe `Nerimity-video-release.apk` da pasta do MediaFire.
+2. **Desinstale o app atual** antes de instalar: este APK usa assinatura de debug, diferente do release do GitHub.
+3. Instale o APK e ative os dois experimentos nativos nas configurações do app.
+4. Entre no canal de voz. Na chamada use os botões `Mic`, `Output`, `Share Screen`, `Sound`, `Fullscreen` e `End Call`.
+
+### Checksum (SHA-256)
+
+- `Nerimity-video-release.apk`: `6c38b839fd57291e40fe1651658844ab8004e50622f120768ea36140de1e3a89`
+
+---
+
+# Versão Desktop
 
 Modificação do app Electron do Nerimity para corrigir **compartilhamento de tela no Wayland**, implementar **TTS para ler o chat da chamada** e melhorar o **system tray** em distros onde ele não aparecia corretamente.
 
 Baseado no wrapper desktop do Nerimity, mantendo o site oficial `https://nerimity.com` carregado no app.
-
-## Download
-
-Baixe o **AppImage** ou **Flatpak** aqui:  
-👉 **[MediaFire - Pasta Nerimity](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)**
 
 ## Como instalar (fácil)
 
@@ -46,7 +100,7 @@ Para desinstalar o Flatpak:
 flatpak uninstall --user com.nerimity.desktop
 ```
 
-## Principais mudanças (V2)
+## Principais mudanças (Desktop V2)
 
 - **Compartilhamento de tela no Wayland**: usa `desktopCapturer` + `setDisplayMediaRequestHandler`, detecta Wayland/X11 automaticamente e prioriza o seletor nativo do portal no Wayland para permitir escolher uma janela/tela nova a cada transmissão.
 - **TTS na chamada**: botão nativo na barra da call para ler mensagens do chat em voz alta (Edge TTS `pt-BR-FranciscaNeural`), com opção de ler todas as mensagens ou apenas usuários selecionados, ignorando links/mídias.
@@ -59,8 +113,6 @@ flatpak uninstall --user com.nerimity.desktop
 ### Leitor de chat (TTS)
 
 Botão na barra nativa da chamada. Lê novas mensagens enquanto você está em chamada. Configurações: todas as mensagens ou usuários selecionados, velocidade e teste de voz.
-
-
 
 ## System tray
 
@@ -81,7 +133,7 @@ flatpak permission-set screencast screencast com.nerimity.desktop yes
 O `electron-builder` gera o bundle. Precisa de `flatpak`, `flatpak-builder`
 (>= 1.2.2) e `fuse3`, além dos refs `org.freedesktop.Platform//26.08`,
 `org.freedesktop.Sdk//26.08` e `org.electronjs.Electron2.BaseApp//26.08`
-(installados automaticamente do Flathub).
+(instalados automaticamente do Flathub).
 
 Nesta máquina o sudo exige senha, então instalei o builder como Flatpak e criei
 um wrapper em `~/.local/bin/flatpak-builder`:
@@ -96,7 +148,7 @@ export PATH="$HOME/.local/bin:$PATH"
 npm run build:flatpak
 ```
 
-## Reconstruir
+## Reconstruir (Desktop)
 
 ```bash
 cd nerimity-appimage

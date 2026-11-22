@@ -156,11 +156,6 @@ npm run build          # AppImage
 npm run build:flatpak  # Flatpak
 ```
 
-## Checksums (SHA-256)
-
-- `NerimityV2.AppImage`: `38cc3e84390ac6d0c1d4660563cbe58e3e82d8096fe3417973495b2724e29622`
-- `NerimityV2.flatpak`: `38be2cabde04672bd29239f75acb1183316f34ca3c5826d475d831ed203a2df2`
-
 ## Código-fonte para GitHub
 
 O código-fonte deste projeto está na pasta:

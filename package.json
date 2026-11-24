@@ -77,7 +77,8 @@
         "--share=network",
         "--talk-name=org.freedesktop.Notifications",
         "--talk-name=org.kde.StatusNotifierWatcher",
-        "--talk-name=org.freedesktop.Flatpak"
+        "--talk-name=org.freedesktop.Flatpak",
+        "--talk-name=org.freedesktop.portal.ScreenCast"
       ]
     }
   }

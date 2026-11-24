@@ -182,13 +182,19 @@ function applyAutostart() {
 // Compartilhamento de tela
 // ---------------------------------------------------------------------------
 function setupDisplayMedia(webContentsSession) {
-  console.log('[display-media] instalando handler', {
-    isWayland,
-    useSystemPicker: isWayland,
-  });
+  // useSystemPicker do Electron é macOS 15+ (experimental). No Wayland o
+  // seletor do dono da sessão é aberto por desktopCapturer.getSources().
+  console.log('[display-media] instalando handler', { isWayland });
   webContentsSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    console.log('[display-media] request', {
+      video: request.videoRequested,
+      audio: request.audioRequested,
+      userGesture: request.userGesture,
+      isWayland,
+    });
     if (displayMediaInProgress) {
-      callback({});
+      console.warn('[display-media] ignorando request duplicada');
+      try { callback(null); } catch (_) {}
       return;
     }
     displayMediaInProgress = true;
@@ -201,27 +207,31 @@ function setupDisplayMedia(webContentsSession) {
       selectedCaptureSource = null;
       availableCaptureSources = [];
 
-      const useNativePicker = isWayland && getSetting('nativeScreenPicker', true);
       let video = preselected && preselected.id !== 'native-picker' ? preselected : null;
 
       if (!video) {
         // Abre o portal/seletor nativo uma única vez por solicitação.
+        console.log('[display-media] abrindo seletor via desktopCapturer.getSources');
         const sources = await desktopCapturer.getSources({
           types: ['screen', 'window'],
           thumbnailSize: { width: 0, height: 0 },
         });
+        console.log('[display-media] fontes retornadas:', sources.length);
         video = sources[0] || null;
+      } else {
+        console.log('[display-media] usando fonte preselecionada:', video.name);
       }
 
       if (!video) {
-        try { callback({}); } catch (_) {}
+        try { callback(null); } catch (_) {}
         return;
       }
 
       let audio = false;
       if (request.audioRequested && !isWayland) {
         // No Wayland o áudio é escolhido depois do portal, pelo popup do
-        // venmic no página; o portal não fornece loopback confiável.
+        // venmic na página; o portal não fornece loopback confiável.
+        // Se nada for escolhido, o wrapper remove as tracks de áudio.
         const mode = getSetting('screenShareAudioMode', 'full');
         if (mode !== 'off' && mode !== 'silent') audio = 'loopback';
       }
@@ -233,11 +243,11 @@ function setupDisplayMedia(webContentsSession) {
       }
     } catch (error) {
       console.error('[display-media] falha ao compartilhar:', error);
-      try { callback({}); } catch (_) {}
+      try { callback(null); } catch (_) {}
     } finally {
       setTimeout(() => { displayMediaInProgress = false; }, 1500);
     }
-  }, { useSystemPicker: isWayland });
+  });
 }
 
 let cachedSourcesPayload = [];

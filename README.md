@@ -69,8 +69,8 @@ flatpak uninstall --user com.nerimity.desktop
 | Artefato | SHA-256 |
 | --- | --- |
 | `NerimityV2.apk` | `00ca0ce3444a7d4109a6224b779ca2aecc26234247a80024b7769b8824d68fc1` |
-| `NerimityV2.AppImage` | `e53ed58ea210b3af3e812afb185327c9499c97da887f44dd3b3d02f0236bc185` |
-| `NerimityV2.flatpak` | `33801d85fbd35ca68e166a651914660e59724ee5db1632754ec198818537c2e6` |
+| `NerimityV2.AppImage` | `90a2580cab3e7af6781a505f0117f8505676ff00b17db21c4a9199b8931ec1fe` |
+| `NerimityV2.flatpak` | `0172ecaa8041f33ff185d0deab9559613423af1d1662705b7dbd91ffcd19e0f5` |
 
 ---
 
@@ -119,8 +119,8 @@ Modificação do app Electron do Nerimity para corrigir compartilhamento de tela
 
 ## Principais mudanças (Desktop V2)
 
-- **Compartilhamento de tela no Wayland:** detecta Wayland/X11 automaticamente. No Wayland, o seletor interno do Nerimity é ignorado e o portal da sessão (`xdg-desktop-portal`) abre diretamente.
-- **Áudio da transmissão:** depois de escolher a janela/tela no portal, aparece o popup para selecionar os apps de áudio. Se nada for marcado e você confirmar, a transmissão segue sem som e sem nova pergunta. Use **Scan for audio apps** se o app desejado não aparecer.
+- **Compartilhamento de tela no Wayland:** detecta Wayland/X11 automaticamente. No Wayland, o seletor interno do Nerimity (lista de janelas do app) é ignorado: ao clicar em compartilhar, abre diretamente o seletor nativo da sessão (`xdg-desktop-portal`). No X11, o seletor normal do Nerimity continua aparecendo.
+- **Áudio da transmissão:** depois de escolher a janela/tela no portal, aparece o popup para selecionar os apps de áudio. Se nada for marcado e você confirmar, a transmissão segue sem som e sem nova pergunta — isso vale também para X11 (não cai para o áudio do sistema). Use **Scan for audio apps** se o app desejado não aparecer.
 - **TTS na chamada:** botão nativo na barra da call para ler mensagens do chat em voz alta. Cliente Edge TTS **embutido**, sem Python e sem `edge-tts` externo. Voz automática pelo idioma do Nerimity/sistema ou voz escolhida no painel.
 - **System tray corrigido:** mostrar/ocultar, recarregar, abrir no navegador e sair; fechar a janela mantém o app na bandeja.
 - **Compatibilidade/estabilidade:** `WindowAPI` completo no preload, cache leve de metadados, correção CORS para Google Drive e flag anti-automação para Turnstile.

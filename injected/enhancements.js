@@ -130,6 +130,7 @@
   navigator.mediaDevices.getDisplayMedia = async function (constraints = {}) {
     const wantAudio = !!constraints.audio;
     let venmicInclude = [];
+    let noAudioChosen = false;
 
     // No Wayland o portal do dono da sessão abre primeiro. O popup de áudio
     // aparece depois da seleção da janela/tela.
@@ -137,6 +138,9 @@
       try {
         venmicInclude = await openVenmicPicker();
       } catch (e) { log('venmic picker erro', e); }
+      // Nada marcado no popup = transmissão sem som. Não cair para o áudio
+      // do sistema (screenShareAudioMode), igual ao comportamento do Wayland.
+      if (!venmicInclude.length) noAudioChosen = true;
     }
 
     const callConstraints = state.isWayland
@@ -168,6 +172,16 @@
           stripAudioTracks(stream);
           log('sharing without audio (no app selected)');
         }
+        stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+          document.dispatchEvent(new Event('neri-wayland-share-ended'));
+        }, { once: true });
+        return stream;
+      }
+
+      if (noAudioChosen) {
+        await API.venmicStop().catch(() => {});
+        stripAudioTracks(stream);
+        log('sharing without audio (no app selected on X11)');
         return stream;
       }
 
@@ -250,6 +264,9 @@
       state.waylandPickerHandled = false;
     };
     document.addEventListener('neri-wayland-share-failed', restore);
+    // Libera o bypass quando a transmissão termina normalmente, para que o
+    // próximo clique em compartilhar abra o portal novamente.
+    document.addEventListener('neri-wayland-share-ended', restore);
 
     const autoPick = () => {
       const label = findWaylandPickerLabel();
@@ -264,9 +281,11 @@
         modal.style.display = 'none';
       }
 
+      // O nome da fonte é renderizado como <span> por Text; o elemento
+      // clicável é o <div> pai imediato (SourceItemContainer), não o avô.
       const item =
         label.closest('[class*="SourceItem"]') ||
-        label.closest('div')?.parentElement ||
+        label.closest('div') ||
         label.parentElement;
       try { item?.click(); } catch (_) {}
 

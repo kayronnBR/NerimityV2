@@ -7,12 +7,11 @@ Versões modificadas do Nerimity mantendo o site oficial `https://nerimity.com` 
 
 ## Download
 
-Baixe o **AppImage**, o **Flatpak** ou o **APK Android** aqui:  
-👉 **[MediaFire](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)**
+Baixe os arquivos da **[Release v2](https://github.com/kayronnBR/NerimityV2/releases/tag/v2)**:
 
-[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://www.mediafire.com/file/jng8eecq6gmbrm6/NerimityV2.apk/file)
-[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://www.mediafire.com/file/b8zwsepjg68cix9/NerimityV2.AppImage/file)
-[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://www.mediafire.com/file/b8zwsepjg68cix9/NerimityV2.AppImage/file)
+[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v2/NerimityV2.apk)
+[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v2/NerimityV2.flatpak)
+[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v2/NerimityV2.AppImage)
 
 ### Checksums dos instaladores (Desktop)
 
@@ -103,7 +102,7 @@ dependências npm, registrado em `MainApplication.kt`.
 
 ## Instalar no Android
 
-1. Baixe `Nerimity-video-release.apk` da pasta do MediaFire.
+1. Baixe `NerimityV2.apk` da [Release v2](https://github.com/kayronnBR/NerimityV2/releases/download/v2/NerimityV2.apk).
 2. **Desinstale o app atual** antes de instalar: este APK usa assinatura de debug, diferente do release do GitHub.
 3. Instale o APK e ative os dois experimentos nativos nas configurações do app.
 4. Entre no canal de voz. Na chamada use os botões `Mic`, `Output`, `Share Screen`, `Sound`, `Fullscreen` e `End Call`.
@@ -111,7 +110,7 @@ dependências npm, registrado em `MainApplication.kt`.
 ### Checksum (SHA-256)
 
 - `Nerimity-video-release.apk`: `6c38b839fd57291e40fe1651658844ab8004e50622f120768ea36140de1e3a89`
-- `dist/NerimityV2.apk` (cópia em `~/Downloads/NerimityV2-fixed.apk`): `553b8c8edc6183961fe3f055008fb576315dedcd64e87c5c1282f0e19eaaaeee`
+- `NerimityV2.apk` da Release v2 (`dist/NerimityV2.apk`): `553b8c8edc6183961fe3f055008fb576315dedcd64e87c5c1282f0e19eaaaeee`
 
 Build validado com JDK 17; o módulo nativo `NerimityOrientation` foi confirmado
 no `classes3.dex` e as novas strings no bundle JavaScript.

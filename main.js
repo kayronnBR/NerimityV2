@@ -182,6 +182,10 @@ function applyAutostart() {
 // Compartilhamento de tela
 // ---------------------------------------------------------------------------
 function setupDisplayMedia(webContentsSession) {
+  console.log('[display-media] instalando handler', {
+    isWayland,
+    useSystemPicker: isWayland,
+  });
   webContentsSession.setDisplayMediaRequestHandler(async (request, callback) => {
     if (displayMediaInProgress) {
       callback({});
@@ -233,7 +237,7 @@ function setupDisplayMedia(webContentsSession) {
     } finally {
       setTimeout(() => { displayMediaInProgress = false; }, 1500);
     }
-  });
+  }, { useSystemPicker: isWayland });
 }
 
 let cachedSourcesPayload = [];

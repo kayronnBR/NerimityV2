@@ -10,9 +10,9 @@ Versões modificadas do Nerimity mantendo o site oficial `https://nerimity.com` 
 Baixe o **AppImage**, o **Flatpak** ou o **APK Android** aqui:  
 👉 **[MediaFire](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)**
 
-[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)
-[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)
-[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://www.mediafire.com/folder/8wpb3pesbp1jz/nerimity)
+[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://www.mediafire.com/file/jng8eecq6gmbrm6/NerimityV2.apk/file)
+[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://www.mediafire.com/file/b8zwsepjg68cix9/NerimityV2.AppImage/file)
+[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://www.mediafire.com/file/b8zwsepjg68cix9/NerimityV2.AppImage/file)
 
 ## Créditos
 

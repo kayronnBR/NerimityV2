@@ -1,6 +1,6 @@
 {
   "name": "nerimity-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "desktopName": "Nerimity",
   "description": "Nerimity as a desktop AppImage with system tray support",
   "main": "main.js",

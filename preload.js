@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld('NeriExtras', {
   isWayland: () => ipcRenderer.invoke('extra-is-wayland'),
   getSetting: (key, fallback) => ipcRenderer.invoke('extra-get-setting', key, fallback),
   setSetting: (key, value) => ipcRenderer.send('extra-set-setting', key, value),
+  openExternal: (url) => ipcRenderer.invoke('extra-open-external', url),
   chooseAudioFolder: () => ipcRenderer.invoke('extra-choose-folder'),
   listAudioFiles: (folder) => ipcRenderer.invoke('extra-list-audio-files', folder),
   readAudioFile: (filePath) => ipcRenderer.invoke('extra-read-audio-file', filePath),
@@ -91,4 +92,7 @@ contextBridge.exposeInMainWorld('NeriExtras', {
   venmicList: () => ipcRenderer.invoke('extra-venmic-list'),
   venmicStart: (include) => ipcRenderer.invoke('extra-venmic-start', include),
   venmicStop: () => ipcRenderer.invoke('extra-venmic-stop'),
+  // O fullscreen nativo dos controles do <video> não passa pelo JavaScript da
+  // página. O processo principal avisa quando o Electron entra nesse modo.
+  onNativeFullscreen: listener('neri-native-fullscreen'),
 });

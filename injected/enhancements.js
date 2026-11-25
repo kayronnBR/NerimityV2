@@ -52,6 +52,10 @@
     videoSenders: new Set(),
     iconSignatureCache: new Map(),
     overlaySettings: { position: 'bottom-right', opacity: 100 },
+    // Volume escolhido pelo usuário nos vídeos do chat. Aplicado a todos os
+    // vídeos novos e restaurado depois que um termina.
+    chatVideoVolume: 1,
+    chatVideoMuted: false,
     // Várias transmissões visíveis ao mesmo tempo no espaço do player nativo.
     gallery: {
       active: false,
@@ -59,8 +63,15 @@
       container: null,
       streams: new Map(),
       collectAttempts: new Map(),
+      // Nomes dos participantes: o painel de voz mostra só o avatar, então
+      // o nome é resolvido pelo ID do perfil e guardado em cache local.
+      userNames: new Map(),
+      nameRequests: new Map(),
       renderedSignature: '',
       idsSignature: '',
+      // Participante que estava sendo visto em modo focado. Serve para
+      // detectar o fim da transmissão e voltar sozinho para a grade.
+      focusedId: '',
       nativeMuted: null,
       nativeVideo: null,
     },
@@ -81,6 +92,83 @@
     el.textContent = message;
     host.appendChild(el);
     setTimeout(() => el.remove(), 4200);
+  }
+
+  // -------------------------------------------------------------------------
+  // Cloudflare: o desktop não passa na verificação. Avisa em inglês e abre a
+  // mesma página no navegador do usuário para ele concluir o challenge.
+  // -------------------------------------------------------------------------
+  const CLOUDFLARE_NOTICE_ID = 'neri-cloudflare-notice';
+
+  function isCloudflareChallenge() {
+    try {
+      if (/cdn-cgi\/challenge-platform|__cf_chl|cf_challenge/i.test(location.href)) return true;
+      const title = String(document.title || '');
+      const text = String(document.body?.innerText || document.body?.textContent || '').slice(0, 6000);
+      const haystack = `${title} ${text}`;
+      if (/just a moment|checking your browser|verify you are human|enable javascript and cookies|cloudflare ray id|attention required|cf-challenge|cf-browser-verification/i.test(haystack)) {
+        return true;
+      }
+      const html = String(document.documentElement?.innerHTML || '').slice(0, 120000);
+      return /cf-challenge|cf-browser-verification|cdn-cgi\/challenge-platform/i.test(html);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function showCloudflareNotice() {
+    if (document.getElementById(CLOUDFLARE_NOTICE_ID)) return;
+    const box = document.createElement('div');
+    box.id = CLOUDFLARE_NOTICE_ID;
+    box.setAttribute('data-neri-extra', '1');
+
+    const message = document.createElement('div');
+    message.className = 'neri-cloudflare-message';
+    const title = document.createElement('strong');
+    title.textContent = 'Verification required';
+    const detail = document.createElement('span');
+    detail.textContent =
+      'This desktop app could not pass the Cloudflare check. Please complete the verification in your browser and then return to the app.';
+    message.appendChild(title);
+    message.appendChild(detail);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'neri-cloudflare-open';
+    button.textContent = 'Open in browser';
+    button.addEventListener('click', (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      const url = window.location.href;
+      const opened = () => toast('Opened in your browser.');
+      const fallback = () => {
+        try {
+          const link = document.createElement('a');
+          link.href = url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.click();
+          opened();
+        } catch (_) {}
+      };
+      try {
+        if (API.openExternal) {
+          Promise.resolve(API.openExternal(url)).then((ok) => (ok ? opened() : fallback())).catch(fallback);
+        } else {
+          fallback();
+        }
+      } catch (_) {
+        fallback();
+      }
+    });
+
+    box.appendChild(message);
+    box.appendChild(button);
+    (document.body || document.documentElement).appendChild(box);
+  }
+
+  function checkCloudflareChallenge() {
+    if (isCloudflareChallenge()) showCloudflareNotice();
   }
 
   // -------------------------------------------------------------------------
@@ -138,11 +226,22 @@
     try { window.WindowAPI?.setFullscreen?.(!!value); } catch (_) {}
   }
 
-  // Tenta colocar o próprio vídeo da transmissão em tela cheia. Só cai para
-  // o fullscreen da janela se o navegador/Electron recusar o elemento.
+  // Encontra o vídeo relacionado a um botão. Também aceita o próprio <video>,
+  // que é o que os controles nativos dos vídeos do chat usam.
+  function videoFromFullscreenTarget(target) {
+    if (target?.tagName === 'VIDEO') return target;
+    const container = target?.closest?.('[class*="videoContainer"]') || target?.parentElement;
+    return (
+      container?.querySelector?.('video') ||
+      container?.parentElement?.querySelector?.('video') ||
+      null
+    );
+  }
+
+  // Tenta colocar o vídeo em tela cheia. Só cai para o fullscreen da janela
+  // se o navegador/Electron recusar o elemento.
   async function fullscreenVideoFromButton(btn) {
-    const container = btn?.closest?.('[class*="videoContainer"]') || btn?.parentElement;
-    const video = container?.querySelector?.('video') || container?.parentElement?.querySelector?.('video');
+    const video = videoFromFullscreenTarget(btn);
     if (!video?.requestFullscreen) return false;
     try {
       await video.requestFullscreen();
@@ -167,9 +266,8 @@
     clearTimeout(player.hideTimer);
     setWindowFullscreen(false);
     document.removeEventListener?.('keydown', onVideoPlayerKey);
-    document.removeEventListener?.('fullscreenchange', onDocumentFullscreenChange);
     try { player.video.removeEventListener?.('click', onVideoClick, true); } catch (_) {}
-    try { player.video.pause = player.originalPause; } catch (_) {}
+    try { player.controls?.destroy?.(); } catch (_) {}
     try { player.video.controls = player.originalControls; } catch (_) {}
     try {
       player.originalParent?.insertBefore?.(player.video, player.originalNext);
@@ -182,31 +280,220 @@
     if (!player) return;
     e?.preventDefault?.();
     try { player.video.play?.()?.catch?.(() => {}); } catch (_) {}
-    // Clique na imagem esconde a barra imediatamente.
+    // Clique na imagem esconde barra e volume imediatamente.
     try {
       clearTimeout(player.hideTimer);
-      player.controls.style.opacity = '0';
-      player.controls.style.pointerEvents = 'none';
+      player.setControlsVisible?.(false);
     } catch (_) {}
-  }
-
-  function onDocumentFullscreenChange() {
-    const player = videoPlayer;
-    if (!player) return;
-    const active = document.fullscreenElement || document.webkitFullscreenElement;
-    if (!active) closeVideoPlayer();
   }
 
   const PLAYER_ICONS = {
     volumeOn: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>',
     volumeOff: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16 9l5 6m0-6l-5 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
     exit: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M5 5h5v2H7v3H5V5zm9 0h5v5h-2V7h-3V5zM5 14h2v3h3v2H5v-5zm12 0h2v5h-5v-2h3v-3z"/></svg>',
+    expand: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/></svg>',
+    play: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>',
   };
+
+  function formatPlayerTime(value) {
+    if (!Number.isFinite(value) || value < 0) return '0:00';
+    const total = Math.floor(value);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return hours ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
+  }
+
+  // Controles próprios, usados no player inline dos vídeos do chat e no
+  // player de tela cheia das transmissões.
+  function createVideoControls(video, options = {}) {
+    const fullscreen = !!options.fullscreen;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const signal = controller?.signal;
+    const on = (el, type, fn) => {
+      if (!el?.addEventListener) return;
+      try { el.addEventListener(type, fn, signal ? { signal } : undefined); }
+      catch (_) { el.addEventListener(type, fn); }
+    };
+    const stop = (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+    };
+
+    // Vídeos do chat lembram o volume escolhido. O valor é aplicado ao criar
+    // os controles e salvo sempre que o usuário muda volume ou mudo.
+    const persist = !!options.persist;
+    const persistVolume = () => {
+      if (!persist) return;
+      const raw = Number(video.volume);
+      const value = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 1;
+      state.chatVideoVolume = value;
+      state.chatVideoMuted = !!video.muted;
+      saveSetting('chatVideoVolume', value);
+      saveSetting('chatVideoMuted', state.chatVideoMuted);
+    };
+    if (persist) {
+      try {
+        const saved = Number(state.chatVideoVolume);
+        if (Number.isFinite(saved)) video.volume = Math.min(1, Math.max(0, saved));
+        video.muted = !!state.chatVideoMuted;
+      } catch (_) {}
+    }
+
+    const controls = document.createElement('div');
+    controls.className = 'neri-player-controls';
+    if (fullscreen) controls.id = 'neri-player-controls';
+
+    const playBtn = document.createElement('button');
+    playBtn.type = 'button';
+    playBtn.className = 'neri-player-btn';
+    if (fullscreen) playBtn.id = 'neri-player-play';
+    playBtn.title = 'Play';
+    playBtn.innerHTML = PLAYER_ICONS.play;
+    controls.appendChild(playBtn);
+
+    const current = document.createElement('span');
+    current.className = 'neri-player-time';
+    if (fullscreen) current.id = 'neri-player-current';
+    current.textContent = '0:00';
+    controls.appendChild(current);
+
+    const seek = document.createElement('input');
+    seek.type = 'range';
+    seek.className = 'neri-player-seek';
+    if (fullscreen) seek.id = 'neri-player-seek';
+    seek.min = '0';
+    seek.max = '0';
+    seek.step = '0.1';
+    seek.value = '0';
+    seek.title = 'Seek';
+    controls.appendChild(seek);
+
+    const duration = document.createElement('span');
+    duration.className = 'neri-player-time';
+    if (fullscreen) duration.id = 'neri-player-duration';
+    duration.textContent = '0:00';
+    controls.appendChild(duration);
+
+    const spacer = document.createElement('span');
+    spacer.className = 'neri-player-spacer';
+    controls.appendChild(spacer);
+
+    // Volume fica separado, no canto superior esquerdo, para a barra inferior
+    // não estreitar e cortar o botão de tela cheia em vídeos pequenos.
+    const volumeBox = document.createElement('div');
+    volumeBox.className = 'neri-volume-control';
+    volumeBox.setAttribute('data-neri-extra', '1');
+
+    const muteBtn = document.createElement('button');
+    muteBtn.type = 'button';
+    muteBtn.className = 'neri-player-btn';
+    if (fullscreen) muteBtn.id = 'neri-player-mute';
+    muteBtn.title = 'Mute';
+    muteBtn.innerHTML = PLAYER_ICONS.volumeOn;
+    volumeBox.appendChild(muteBtn);
+
+    const volume = document.createElement('input');
+    volume.type = 'range';
+    volume.className = 'neri-player-volume';
+    if (fullscreen) volume.id = 'neri-player-volume';
+    volume.min = '0';
+    volume.max = '1';
+    volume.step = '0.01';
+    volume.value = String(video.muted ? 0 : (video.volume ?? 1));
+    volume.title = 'Volume';
+    volumeBox.appendChild(volume);
+
+    try { (options.volumeHost || controls).appendChild(volumeBox); }
+    catch (_) { controls.appendChild(volumeBox); }
+
+    const fullBtn = document.createElement('button');
+    fullBtn.type = 'button';
+    fullBtn.className = 'neri-player-btn neri-chat-fullscreen';
+    fullBtn.setAttribute('data-neri-chat-fullscreen', '1');
+    fullBtn.setAttribute('data-neri-extra', '1');
+    if (fullscreen) fullBtn.id = 'neri-player-exit';
+    fullBtn.title = fullscreen ? 'Exit fullscreen' : 'Fullscreen';
+    fullBtn.setAttribute('aria-label', fullBtn.title);
+    fullBtn.innerHTML = fullscreen ? PLAYER_ICONS.exit : PLAYER_ICONS.expand;
+    controls.appendChild(fullBtn);
+
+    let playing = false;
+    const syncPlay = () => {
+      try { playing = !video.paused; } catch (_) {}
+      playBtn.innerHTML = playing ? PLAYER_ICONS.pause : PLAYER_ICONS.play;
+      playBtn.title = playing ? 'Pause' : 'Play';
+    };
+    const syncMute = () => {
+      muteBtn.innerHTML = video.muted ? PLAYER_ICONS.volumeOff : PLAYER_ICONS.volumeOn;
+      muteBtn.title = video.muted ? 'Unmute' : 'Mute';
+      volume.value = String(video.muted ? 0 : (video.volume ?? 1));
+    };
+    const syncTime = () => {
+      const raw = Number(video.duration);
+      const total = Number.isFinite(raw) && raw > 0 ? raw : 0;
+      const at = Number(video.currentTime) || 0;
+      seek.max = String(total);
+      seek.value = String(Math.min(at, total));
+      current.textContent = formatPlayerTime(at);
+      duration.textContent = formatPlayerTime(total);
+    };
+
+    on(playBtn, 'click', (event) => {
+      stop(event);
+      if (playing) { try { video.pause?.(); } catch (_) {} }
+      else { try { video.play?.()?.catch?.(() => {}); } catch (_) {} }
+      syncPlay();
+    });
+    on(seek, 'input', (event) => {
+      stop(event);
+      try { video.currentTime = Number(seek.value); } catch (_) {}
+      syncTime();
+    });
+    on(muteBtn, 'click', (event) => {
+      stop(event);
+      try { video.muted = !video.muted; } catch (_) {}
+      syncMute();
+      persistVolume();
+    });
+    on(volume, 'input', (event) => {
+      stop(event);
+      const value = Number(volume.value);
+      try { video.volume = value; video.muted = value === 0; } catch (_) {}
+      syncMute();
+      persistVolume();
+    });
+    on(fullBtn, 'click', (event) => {
+      stop(event);
+      if (fullscreen) closeVideoPlayer();
+      else openVideoPlayer(video);
+    });
+
+    on(video, 'play', syncPlay);
+    on(video, 'playing', syncPlay);
+    on(video, 'pause', syncPlay);
+    on(video, 'ended', syncPlay);
+    on(video, 'timeupdate', syncTime);
+    on(video, 'durationchange', syncTime);
+    on(video, 'loadedmetadata', syncTime);
+    on(video, 'progress', syncTime);
+    on(video, 'volumechange', () => {
+      syncMute();
+      persistVolume();
+    });
+
+    syncPlay();
+    syncMute();
+    syncTime();
+    controls.destroy = () => { try { controller?.abort(); } catch (_) {} };
+    return controls;
+  }
 
   function openVideoPlayer(btn) {
     if (videoPlayer) { closeVideoPlayer(); return true; }
-    const container = btn?.closest?.('[class*="videoContainer"]') || btn?.parentElement;
-    const video = container?.querySelector?.('video') || container?.parentElement?.querySelector?.('video');
+    const video = videoFromFullscreenTarget(btn);
     if (!video) return false;
 
     const originalParent = video.parentElement;
@@ -233,81 +520,39 @@
     // fullscreen do navegador, que o Electron não fecha corretamente.
     try { video.controls = false; } catch (_) {}
 
-    const controls = document.createElement('div');
-    controls.id = 'neri-player-controls';
+    const isCallVideo = !!originalParent?.closest?.(
+      '[class*="videoContainer"], [class*="voiceActions"]'
+    );
+    const controls = createVideoControls(video, {
+      fullscreen: true,
+      persist: !isCallVideo,
+      volumeHost: holder,
+    });
     holder.appendChild(controls);
 
-    const muteBtn = document.createElement('button');
-    muteBtn.type = 'button';
-    muteBtn.id = 'neri-player-mute';
-    muteBtn.className = 'neri-player-btn';
-    muteBtn.title = 'Mute';
-    muteBtn.innerHTML = PLAYER_ICONS.volumeOn;
-    controls.appendChild(muteBtn);
-
-    const volume = document.createElement('input');
-    volume.type = 'range';
-    volume.id = 'neri-player-volume';
-    volume.className = 'neri-player-volume';
-    volume.min = '0';
-    volume.max = '1';
-    volume.step = '0.01';
-    volume.value = String(video.muted ? 0 : (video.volume ?? 1));
-    controls.appendChild(volume);
-
-    const spacer = document.createElement('span');
-    spacer.className = 'neri-player-spacer';
-    controls.appendChild(spacer);
-
-    const exitBtn = document.createElement('button');
-    exitBtn.type = 'button';
-    exitBtn.id = 'neri-player-exit';
-    exitBtn.className = 'neri-player-btn';
-    exitBtn.title = 'Exit fullscreen';
-    exitBtn.innerHTML = PLAYER_ICONS.exit;
-    controls.appendChild(exitBtn);
-
+    const volumeBox = holder.querySelector('.neri-volume-control');
     const player = {
-      overlay, holder, controls, video, originalParent, originalNext,
+      overlay, holder, controls, volumeBox, video, originalParent, originalNext,
       originalControls, originalPause, hideTimer: 0,
+      setControlsVisible: (visible) => {
+        for (const el of [controls, volumeBox]) {
+          if (!el) continue;
+          el.style.opacity = visible ? '1' : '0';
+          el.style.pointerEvents = visible ? 'auto' : 'none';
+        }
+      },
+      // Vídeos do chat podem entrar em fullscreen fora de uma chamada; só o
+      // player de transmissão deve fechar se a barra da chamada sumir.
+      callVideo: isCallVideo,
     };
     videoPlayer = player;
 
-    const syncMute = () => {
-      muteBtn.innerHTML = video.muted ? PLAYER_ICONS.volumeOff : PLAYER_ICONS.volumeOn;
-      muteBtn.title = video.muted ? 'Unmute' : 'Mute';
-      volume.value = String(video.muted ? 0 : (video.volume ?? 1));
-    };
-    muteBtn.addEventListener('click', (e) => {
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      try { video.muted = !video.muted; } catch (_) {}
-      syncMute();
-    });
-    volume.addEventListener('input', (e) => {
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      const value = Number(volume.value);
-      try { video.volume = value; video.muted = value === 0; } catch (_) {}
-      syncMute();
-    });
-    exitBtn.addEventListener('click', (e) => {
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      closeVideoPlayer();
-    });
-    syncMute();
-
-    // Controles desaparecem sozinhos e voltam ao mover o mouse.
+    // Controles e volume desaparecem sozinhos e voltam ao mover o mouse.
     let hideTimer = 0;
     const showControls = () => {
-      controls.style.opacity = '1';
-      controls.style.pointerEvents = 'auto';
+      player.setControlsVisible(true);
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(() => {
-        controls.style.opacity = '0';
-        controls.style.pointerEvents = 'none';
-      }, 2500);
+      hideTimer = setTimeout(() => player.setControlsVisible(false), 2500);
       player.hideTimer = hideTimer;
     };
     overlay.addEventListener('mousemove', showControls);
@@ -318,25 +563,137 @@
     });
     document.addEventListener?.('keydown', onVideoPlayerKey);
     try { video.addEventListener?.('click', onVideoClick, true); } catch (_) {}
-    try { video.pause = () => {}; } catch (_) {}
 
-    document.addEventListener?.('fullscreenchange', onDocumentFullscreenChange);
     try { video.play?.()?.catch?.(() => {}); } catch (_) {}
     setWindowFullscreen(true);
     return true;
   }
 
+  // Vídeos enviados no chat: removemos os controles nativos e usamos o mesmo
+  // player das transmissões, com play/pause, tempo, volume e tela cheia.
+  let lastChatVideo = null;
+  function decorateChatVideo(video) {
+    if (!video || video.tagName !== 'VIDEO' || !video.hasAttribute?.('controls')) return;
+    if (video.closest?.('#neri-video-fullscreen, #neri-share-gallery')) return;
+    if (video.closest?.('[class*="videoContainer"], [class*="voiceActions"]')) return;
+    if (video.dataset?.neriChatPlayer) return;
+    const parent = video.parentElement;
+    if (!parent) return;
+
+    // Garante que o wrapper absoluto não "vaze" para um ancestral distante.
+    try {
+      if (window.getComputedStyle?.(parent).position === 'static') {
+        parent.style.position = 'relative';
+      }
+    } catch (_) {}
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'neri-chat-player';
+    wrapper.setAttribute('data-neri-chat-player', '1');
+    try { parent.insertBefore(wrapper, video); } catch (_) { return; }
+    try { wrapper.appendChild(video); } catch (_) { return; }
+    try { video.dataset.neriChatPlayer = '1'; } catch (_) {}
+    lastChatVideo = video;
+    try {
+      video.controls = false;
+      video.addEventListener('pointerdown', () => { lastChatVideo = video; }, true);
+      video.addEventListener('focus', () => { lastChatVideo = video; }, true);
+    } catch (_) {}
+
+    const controls = createVideoControls(video, { persist: true, volumeHost: wrapper });
+    try { wrapper.appendChild(controls); } catch (_) {}
+    wrapper.neriControls = controls;
+
+    // Barra e volume se adaptam ao tamanho real do vídeo no chat, para que o
+    // botão de tela cheia nunca fique cortado em embeds estreitos.
+    const resizeControls = () => {
+      const width =
+        wrapper.getBoundingClientRect?.().width ||
+        parent.getBoundingClientRect?.().width ||
+        0;
+      controls.classList.toggle('neri-player-compact', width > 0 && width < 360);
+      controls.classList.toggle('neri-player-tiny', width > 0 && width < 240);
+      const volumeBox = wrapper.querySelector('.neri-volume-control');
+      if (volumeBox) {
+        volumeBox.classList.toggle('neri-volume-compact', width > 0 && width < 360);
+        volumeBox.classList.toggle('neri-volume-tiny', width > 0 && width < 240);
+      }
+    };
+    resizeControls();
+    try { requestAnimationFrame(resizeControls); } catch (_) { resizeControls(); }
+    try {
+      if (typeof ResizeObserver === 'function') {
+        const observer = new ResizeObserver(resizeControls);
+        observer.observe(wrapper);
+        wrapper.neriResizeObserver = observer;
+      }
+    } catch (_) {}
+    window.addEventListener('resize', resizeControls);
+
+    const volumeBox = wrapper.querySelector('.neri-volume-control');
+    const setInlineVisible = (visible) => {
+      for (const el of [controls, volumeBox]) {
+        if (!el) continue;
+        el.style.opacity = visible ? '1' : '0';
+        el.style.pointerEvents = visible ? 'auto' : 'none';
+      }
+    };
+    let hideTimer = 0;
+    const showInlineControls = () => {
+      setInlineVisible(true);
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        if (video.paused || video.closest('#neri-video-fullscreen')) return;
+        setInlineVisible(false);
+      }, 2500);
+    };
+    wrapper.addEventListener('mousemove', showInlineControls);
+    wrapper.addEventListener('mouseleave', () => {
+      if (!video.paused) setInlineVisible(false);
+    });
+    video.addEventListener('play', showInlineControls);
+    video.addEventListener('click', (event) => {
+      if (event.target !== video || video.closest('#neri-video-fullscreen')) return;
+      if (video.paused) { try { video.play?.()?.catch?.(() => {}); } catch (_) {} }
+      else { try { video.pause?.(); } catch (_) {} }
+      showInlineControls();
+    });
+  }
+
+  function decorateChatVideos() {
+    document.querySelectorAll('video[controls]').forEach(decorateChatVideo);
+  }
+
   // O botão de sair dos controles nativos chama document.exitFullscreen().
   // Aproveita para fechar o player e tirar a janela do fullscreen também.
+  let originalExitFullscreen = null;
   try {
     if (document?.exitFullscreen) {
-      const originalExitFullscreen = document.exitFullscreen.bind(document);
+      originalExitFullscreen = document.exitFullscreen.bind(document);
       document.exitFullscreen = function (...args) {
         closeVideoPlayer();
         return originalExitFullscreen(...args);
       };
     }
   } catch (_) {}
+
+  // Se o fullscreen nativo do vídeo funcionou, deixamos o Electron controlar
+  // a janela. O player próprio é último caso (ver patch de requestFullscreen).
+  function onNativeVideoFullscreen() {
+    const element = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!element) {
+      // Saída do fullscreen nativo: a janela volta também, salvo se o player
+      // próprio estiver aberto (ele controla o fullscreen por IPC).
+      if (!videoPlayer) setWindowFullscreen(false);
+      return;
+    }
+    if (element.tagName !== 'VIDEO') return;
+    if (element.closest?.('#neri-video-fullscreen')) return;
+    // Só garante que a janela acompanhe o fullscreen do elemento.
+    setWindowFullscreen(true);
+  }
+  document.addEventListener?.('fullscreenchange', onNativeVideoFullscreen, true);
+  document.addEventListener?.('webkitfullscreenchange', onNativeVideoFullscreen, true);
 
   let fullscreenClickAt = 0;
   async function handleFullscreenClick(btn) {
@@ -353,23 +710,43 @@
 
   // Electron rejeita requestFullscreen({ navigationUI: 'hide' }) usado pelo
   // Nerimity. Mantém o gesto do usuário e chama sem essa opção.
+  // Para vídeos do chat, o fullscreen nativo vem primeiro; o player próprio
+  // (das transmissões) fica só como último caso, se o Electron recusar.
   const fullscreenProto = typeof Element !== 'undefined' ? Element.prototype : null;
   if (fullscreenProto?.requestFullscreen) {
     const originalRequestFullscreen = fullscreenProto.requestFullscreen;
     fullscreenProto.requestFullscreen = function (options) {
+      const target = this;
       const safeOptions = options && 'navigationUI' in options ? undefined : options;
+      const usePlayerAsLastResort = () => {
+        if (target?.tagName !== 'VIDEO' || target.closest?.('#neri-video-fullscreen')) return false;
+        if (videoPlayer?.video === target) return true;
+        try { return openVideoPlayer(target); } catch (_) { return false; }
+      };
       let result;
       try {
-        result = originalRequestFullscreen.call(this, safeOptions);
-      } catch (_) {
-        try { result = originalRequestFullscreen.call(this); }
-        catch (_) { result = Promise.reject(); }
+        result = originalRequestFullscreen.call(target, safeOptions);
+      } catch (error) {
+        if (usePlayerAsLastResort()) return Promise.resolve();
+        return Promise.reject(error);
       }
-      return Promise.resolve(result).catch(() => {
-        // Electron pode rejeitar o elemento de vídeo. Tenta o documento
-        // inteiro e, por último, o fullscreen nativo da janela.
+      // O Electron pode deixar a promise pendente sem nunca entrar em
+      // fullscreen. Nesse caso, o player próprio entra como último caso.
+      let settled = false;
+      Promise.resolve(result).then(
+        () => { settled = true; },
+        () => { settled = true; }
+      );
+      setTimeout(() => {
+        if (settled) return;
+        if (document.fullscreenElement === target || document.webkitFullscreenElement === target) return;
+        usePlayerAsLastResort();
+      }, 500);
+      return Promise.resolve(result).catch((error) => {
+        if (usePlayerAsLastResort()) return;
+        // Outros elementos (botões da chamada) mantêm o comportamento antigo.
         try { return originalRequestFullscreen.call(document.documentElement); }
-        catch (_) { triggerWindowFullscreen(); return Promise.resolve(); }
+        catch (_) { triggerWindowFullscreen(); }
       });
     };
   }
@@ -454,7 +831,72 @@
     if (!clone) return '';
     clone.querySelectorAll?.('svg, img, [class*="icon"], [class*="Icon"]')
       .forEach((node) => node.remove());
-    return (clone.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 48);
+    const text = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text && !/^user avatar$/i.test(text)) return text.slice(0, 48);
+    for (const attr of ['title', 'aria-label', 'data-neri-username']) {
+      const value = String(item?.getAttribute?.(attr) || '').trim();
+      if (value && !/^user avatar$/i.test(value)) return value.slice(0, 48);
+    }
+    return '';
+  }
+
+  function visibleShareName(id, entry) {
+    return (
+      entry?.name ||
+      galleryState.userNames.get(id) ||
+      `User ${String(id).slice(-6)}`
+    );
+  }
+
+  function updateShareNameLabel(id, rawName, cache = false) {
+    const name = String(rawName || '').replace(/\s+/g, ' ').trim().slice(0, 48);
+    if (!name) return;
+    if (cache) galleryState.userNames.set(id, name);
+    const entry = galleryState.streams.get(id);
+    if (entry) entry.name = name;
+    const tile = [...(galleryState.container?.querySelectorAll('.neri-share-tile') || [])]
+      .find((node) => node.getAttribute('data-user-id') === id);
+    if (!tile) return;
+    tile.title = name;
+    const label = tile.querySelector('.neri-share-name');
+    if (label) label.textContent = name;
+  }
+
+  function usernameFromApiResponse(data) {
+    const user = data?.user || data?.data?.user || data;
+    return String(user?.username || user?.name || '').trim().slice(0, 48);
+  }
+
+  // O painel de voz do Nerimity mostra só o avatar. Quando não há nome no
+  // DOM, resolve o nome pelo ID do perfil usando a mesma API do site.
+  function loadShareName(id, item) {
+    if (!id || galleryState.userNames.has(id)) return Promise.resolve();
+    const previous = galleryState.nameRequests.get(id);
+    if (previous) return previous;
+
+    const provisional = shareNameFromItem(item);
+    if (provisional) updateShareNameLabel(id, provisional);
+
+    const request = (async () => {
+      try {
+        let token = '';
+        try { token = window.localStorage?.getItem?.('userToken') || ''; } catch (_) {}
+        const headers = { Accept: 'application/json' };
+        if (token) headers.Authorization = token;
+        const url = new URL(`/api/users/${encodeURIComponent(id)}`, window.location.href).href;
+        const response = await window.fetch(url, { method: 'GET', headers });
+        if (!response?.ok) return '';
+        const name = usernameFromApiResponse(await response.json());
+        if (name) updateShareNameLabel(id, name, true);
+        return name;
+      } catch (_) {
+        return '';
+      } finally {
+        galleryState.nameRequests.delete(id);
+      }
+    })();
+    galleryState.nameRequests.set(id, request);
+    return request;
   }
 
   function nextFrame() {
@@ -504,7 +946,12 @@
         }
         const stream = nativeShareVideo()?.srcObject;
         if (stream) {
-          galleryState.streams.set(id, { stream, name: shareNameFromItem(item) });
+          const cachedName = galleryState.userNames.get(id) || '';
+          galleryState.streams.set(id, {
+            stream,
+            name: cachedName || shareNameFromItem(item),
+          });
+          loadShareName(id, item);
         }
       }
     } finally {
@@ -538,7 +985,7 @@
       const tile = document.createElement('div');
       tile.className = 'neri-share-tile';
       tile.setAttribute('data-user-id', id);
-      tile.title = entry.name || 'Screen share';
+      tile.title = visibleShareName(id, entry);
 
       const video = document.createElement('video');
       video.className = 'neri-share-preview';
@@ -552,7 +999,7 @@
 
       const label = document.createElement('span');
       label.className = 'neri-share-name';
-      label.textContent = entry.name || 'Screen share';
+      label.textContent = visibleShareName(id, entry);
 
       tile.appendChild(video);
       tile.appendChild(label);
@@ -585,6 +1032,7 @@
 
   async function focusShare(id, alreadySelected = false) {
     if (videoPlayer) return;
+    galleryState.focusedId = id;
     const item = sharerItems().find((el) => userIdFromItem(el) === id);
     if (item && !alreadySelected && !isSelectedParticipant(item)) {
       try { item.click(); } catch (_) {}
@@ -597,6 +1045,7 @@
 
   function showShareGallery() {
     if (videoPlayer || galleryState.collecting) return;
+    galleryState.focusedId = '';
     setGalleryMode(true);
   }
 
@@ -636,12 +1085,39 @@
       renderShareGallery();
     }
 
+    // Reconhece qual transmissão o Nerimity está mostrando no vídeo nativo.
+    // Não faz isso durante a coleta, que seleciona participantes só para ler
+    // os streams e depois restaura a seleção anterior.
+    if (!g.collecting && !g.active) {
+      const selected = document.querySelector(
+        '[class*="voiceParticipantItem"][class*="selected"]'
+      );
+      const selectedId = selected ? userIdFromItem(selected) : '';
+      if (selectedId && g.streams.has(selectedId)) g.focusedId = selectedId;
+    }
+
     if (idsSignature !== g.idsSignature) {
       const anteriores = new Set(g.idsSignature.split('|').filter(Boolean));
       g.idsSignature = idsSignature;
-      // Só uma transmissão nova reabre a grade; uma que terminou não muda
-      // o que o usuário estava vendo.
-      if (ids.some((id) => !anteriores.has(id))) g.active = true;
+      if (ids.some((id) => !anteriores.has(id))) {
+        g.active = true;
+        g.focusedId = '';
+      }
+    }
+
+    // Se a transmissão que estava focada acabou, volta automaticamente para
+    // a grade com as demais telas, sem exigir clique manual.
+    if (g.focusedId && !g.active) {
+      const focusedStream = g.streams.get(g.focusedId);
+      const focusedTrack = focusedStream?.getVideoTracks?.()?.[0];
+      const focusedEnded =
+        !ids.includes(g.focusedId) ||
+        !focusedStream ||
+        focusedTrack?.readyState === 'ended';
+      if (focusedEnded) {
+        g.focusedId = '';
+        if (ids.length) g.active = true;
+      }
     }
 
     if (ids.some((id) => !g.streams.has(id))) collectShareStreams();
@@ -2052,6 +2528,7 @@
     // O botão fica no container do vídeo, fora da barra voiceActions.
     document.querySelectorAll('button').forEach((btn) => {
       if (btn.__neriFullscreenPatched || btn.getAttribute('data-neri-extra')) return;
+      if (btn.closest?.('#neri-video-fullscreen')) return;
       const icon = btn.querySelector('span.icon[data-neri-icon="fullscreen"]');
       const title = (btn.getAttribute('title') || '').toLowerCase();
       if (!icon && !/fullscreen|tela cheia|pantalla completa|plein écran/i.test(title)) return;
@@ -2069,6 +2546,9 @@
   document.addEventListener('click', (e) => {
     const btn = e.target?.closest?.('button');
     if (!btn || btn.getAttribute('data-neri-extra')) return;
+    // Os controles do player próprio não são botões do Nerimity; o botão de
+    // sair, por exemplo, tem "fullscreen" no título e não deve reabrir nada.
+    if (btn.closest?.('#neri-video-fullscreen')) return;
     const icon = btn.querySelector('span.icon[data-neri-icon="fullscreen"]');
     const title = (btn.getAttribute('title') || '').toLowerCase();
     if (!icon && !/fullscreen|tela cheia|pantalla completa|plein écran/i.test(title)) return;
@@ -2174,6 +2654,11 @@
 
   async function init() {
     state.isWayland = !!(await API.isWayland?.().catch(() => false));
+    const savedVolume = Number(await API.getSetting('chatVideoVolume', 1));
+    state.chatVideoVolume = Number.isFinite(savedVolume)
+      ? Math.min(1, Math.max(0, savedVolume))
+      : 1;
+    state.chatVideoMuted = !!(await API.getSetting('chatVideoMuted', false));
     state.mode = (await API.getSetting('screenShareAudioMode', 'clean')) || 'clean';
     state.ttsMode = (await API.getSetting('ttsMode', 'all')) || 'all';
     state.ttsUsers = (await API.getSetting('ttsUsers', [])) || [];
@@ -2207,9 +2692,12 @@
         ensureNativeButtons();
         labelNativeIcons();
         updateButtons();
+        decorateChatVideos();
+        checkCloudflareChallenge();
         syncShareGallery();
         if (!findCallBar()) {
-          closeVideoPlayer();
+          // Não fecha o player de um vídeo do chat só porque não há chamada.
+          if (videoPlayer?.callVideo) closeVideoPlayer();
           if (state.screenSharing || state.cameraOverlay || activeComposition) {
             handleScreenShareEnded();
           }
@@ -2236,6 +2724,7 @@
     Promise.all(NATIVE_ICONS.map((name) => iconMarkup(name).catch(() => '')))
       .then(() => labelNativeIcons());
     setupWaylandPickerBypass();
+    checkCloudflareChallenge();
     refresh();
     log('injetado com sucesso');
   }

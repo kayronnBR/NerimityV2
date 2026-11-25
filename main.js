@@ -349,6 +349,15 @@ function createWindow() {
 
   setupDisplayMedia(mainWindow.webContents.session);
 
+  // Controles nativos de vídeo entram em fullscreen sem avisar a página via
+  // requestFullscreen()/fullscreenchange. Avisamos o renderer para abrir o
+  // nosso player de tela cheia com os controles do app.
+  mainWindow.webContents.on('enter-html-full-screen', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('neri-native-fullscreen');
+    }
+  });
+
   // Tema "vanilla" + recursos extras injetados na página
   const injectDir = path.join(__dirname, 'injected');
   const themeCssPath = path.join(injectDir, 'vanilla-theme.css');
@@ -745,6 +754,19 @@ function registerIpcHandlers() {
   );
   ipcMain.handle('extra-get-setting', (_e, key, fallback) => getSetting(key, fallback));
   ipcMain.on('extra-set-setting', (_e, key, value) => setSetting(key, value));
+
+  // Abre a página atual no navegador padrão (necessário para o challenge do
+  // Cloudflare, que o Electron não consegue concluir).
+  ipcMain.handle('extra-open-external', async (_e, rawUrl) => {
+    try {
+      const url = new URL(String(rawUrl));
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+      await shell.openExternal(url.href);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  });
 
   ipcMain.handle('extra-choose-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

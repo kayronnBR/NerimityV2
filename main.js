@@ -19,6 +19,20 @@ const {
   normalizeLocale,
 } = require('./tts');
 
+// Quando o AppImage é aberto pelo gerenciador de arquivos, stdout/stderr podem
+// virar um pipe sem leitor. Um console.log nessa situação lança "write EPIPE"
+// e derruba o processo principal. Silencia qualquer falha de escrita.
+for (const stream of [process.stdout, process.stderr]) {
+  try { stream?.on?.('error', () => {}); } catch (_) {}
+}
+for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+  const original = console[level]?.bind(console);
+  if (!original) continue;
+  console[level] = (...args) => {
+    try { original(...args); } catch (_) {}
+  };
+}
+
 let venmic = null;
 let venmicReady = false;
 function getVenmic() {

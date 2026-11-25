@@ -7,12 +7,12 @@ Versões modificadas do Nerimity mantendo o site oficial `https://nerimity.com` 
 
 ## Download
 
-Baixe os arquivos da **[Release v3](https://github.com/kayronnBR/NerimityV2/releases/tag/v3)**:
+Baixe os arquivos da **[Release v4](https://github.com/kayronnBR/NerimityV2/releases/tag/v4)**:
 
-[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v3/NerimityV2.apk)
-[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v3/NerimityV2.exe)
-[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v3/NerimityV2.flatpak)
-[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v3/NerimityV2.AppImage)
+[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v4/NerimityV2.apk)
+[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v4/NerimityV2.exe)
+[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v4/NerimityV2.flatpak)
+[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v4/NerimityV2.AppImage)
 
 > O `.exe` de Windows é **portátil**: baixe e execute, sem instalação.
 
@@ -79,9 +79,9 @@ flatpak uninstall --user com.nerimity.desktop
 | Artefato | SHA-256 |
 | --- | --- |
 | `NerimityV2.apk` | `00ca0ce3444a7d4109a6224b779ca2aecc26234247a80024b7769b8824d68fc1` |
-| `NerimityV2.exe` (Windows) | `d7bb08bca9a534c87675d662378e0def2a55b8d422712faada7004c217e42319` |
-| `NerimityV2.AppImage` | `452660869180bddd479a1ce8fa5982dacdffe74fc57ae8bc063f6c623a898a4f` |
-| `NerimityV2.flatpak` | `b659f868ee83ec6ef5ca3d91b35cc1f2a43c7c9f413616b40e6d13c2caec1245` |
+| `NerimityV2.exe` (Windows) | `69f13a89a33fe106a495bb240c4544921557fce5bf56913d40a333c941a4daca` |
+| `NerimityV2.AppImage` | `29323b779c55fc5fd86ff8bf0f5e0aa65430a39b69283a636a47b0aa1e7983f4` |
+| `NerimityV2.flatpak` | `1f2e2688b99a7b972c61054f97d81f836d7117b8aa0db0bcef89707b348d5ac2` |
 
 ---
 
@@ -137,6 +137,7 @@ Modificação do app Electron do Nerimity para corrigir compartilhamento de tela
 - **Compatibilidade/estabilidade:** `WindowAPI` completo no preload, cache leve de metadados, correção CORS para Google Drive e flag anti-automação para Turnstile.
 - **Câmera dentro da transmissão:** a tela começa sem câmera; use o botão na chamada para ligá-la. Escolha a posição na grade 3×3 e a transparência no painel — as duas ficam salvas no PC. Um único stream composto de tela + câmera.
 - **Player de tela cheia:** abre em F11 com controles próprios (volume, mute e sair). A barra some ao clicar no vídeo, ao mover o mouse para fora ou sozinha após inatividade. Sem pause ao clicar na imagem.
+- **Várias transmissões ao mesmo tempo:** quando alguém compartilha tela, o espaço preto do lado direito passa a mostrar a prévia de todas as transmissões ativas, incluindo a sua, todas sem som. Clicar numa prévia foca aquela transmissão do jeito de sempre (uma por pessoa, com áudio); clicar no vídeo ou apertar `Esc` volta às prévias e corta o som novamente.
 - **Windows:** release com executável portátil x64.
 
 

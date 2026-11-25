@@ -52,6 +52,18 @@
     videoSenders: new Set(),
     iconSignatureCache: new Map(),
     overlaySettings: { position: 'bottom-right', opacity: 100 },
+    // Várias transmissões visíveis ao mesmo tempo no espaço do player nativo.
+    gallery: {
+      active: false,
+      collecting: false,
+      container: null,
+      streams: new Map(),
+      collectAttempts: new Map(),
+      renderedSignature: '',
+      idsSignature: '',
+      nativeMuted: null,
+      nativeVideo: null,
+    },
   };
 
   const log = (...args) => console.log('[NeriExtras]', ...args);
@@ -331,6 +343,9 @@
     const now = Date.now();
     if (now - fullscreenClickAt < 400) return;
     fullscreenClickAt = now;
+    // O player próprio continua com o áudio de sempre: sai da grade antes
+    // de abrir, para que o vídeo não fique forçado a mudo.
+    if (galleryState.active) setGalleryMode(false);
     if (openVideoPlayer(btn)) return;
     const videoFullscreen = await fullscreenVideoFromButton(btn);
     if (!videoFullscreen) triggerWindowFullscreen();
@@ -358,6 +373,320 @@
       });
     };
   }
+
+  // -------------------------------------------------------------------------
+  // Galeria de transmissões: aproveita o espaço preto do player nativo para
+  // mostrar todas as telas compartilhadas ao mesmo tempo. Todas as prévias
+  // ficam sem som; só a transmissão focada (uma por pessoa) tem áudio.
+  // -------------------------------------------------------------------------
+  const galleryState = state.gallery;
+
+  function isSelectedParticipant(el) {
+    return [...(el?.classList || [])].some((c) => /selected/i.test(c));
+  }
+
+  function shareHeader() {
+    return document.querySelector('[class*="headerVoiceParticipants"]');
+  }
+
+  function nativeShareContainer() {
+    return shareHeader()?.querySelector('[class*="videoContainer"]') || null;
+  }
+
+  // Impede que o vídeo nativo toque som enquanto a galeria está aberta,
+  // sem perder o estado de volume/mudo que o Nerimity mantém no componente.
+  function watchNativeVideoMuted(video) {
+    if (!video || video.__neriGalleryMutedWatched) return;
+    video.__neriGalleryMutedWatched = true;
+    const desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted');
+    if (!desc?.get || !desc?.set) return;
+    try {
+      Object.defineProperty(video, 'muted', {
+        configurable: true,
+        get() { return desc.get.call(this); },
+        set(value) {
+          if (galleryState.active && value !== true) {
+            galleryState.nativeMuted = !!value;
+            value = true;
+          }
+          desc.set.call(this, value);
+        },
+      });
+    } catch (_) {}
+  }
+
+  function nativeShareVideo() {
+    const container = nativeShareContainer();
+    if (!container) return null;
+    const video = [...container.children].find(
+      (n) => n.tagName === 'VIDEO' && n.id !== 'neri-share-gallery'
+    ) || null;
+    if (video && video !== galleryState.nativeVideo) {
+      watchNativeVideoMuted(video);
+      galleryState.nativeVideo = video;
+    }
+    return video;
+  }
+
+  function sharerItems() {
+    return [...document.querySelectorAll('[class*="voiceParticipantItem"]')]
+      .filter((el) => el.querySelector('[class*="videoStreamIcon"]'));
+  }
+
+  function userIdFromItem(item) {
+    let id = item?.getAttribute?.('data-neri-user-id') || '';
+    if (!id) {
+      const href =
+        item?.getAttribute?.('href') ||
+        item?.querySelector?.('[href]')?.getAttribute?.('href') ||
+        '';
+      const match = href.match(/\/([^/?#]+)\/?(?:[?#]|$)/);
+      id = match ? match[1] : '';
+      if (id) {
+        try { item.setAttribute('data-neri-user-id', id); } catch (_) {}
+      }
+    }
+    return id;
+  }
+
+  function shareNameFromItem(item) {
+    const clone = item?.cloneNode?.(true);
+    if (!clone) return '';
+    clone.querySelectorAll?.('svg, img, [class*="icon"], [class*="Icon"]')
+      .forEach((node) => node.remove());
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 48);
+  }
+
+  function nextFrame() {
+    return new Promise((resolve) => {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      } else {
+        setTimeout(resolve, 30);
+      }
+    });
+  }
+
+  // Clique feito por nós para ler um stream não deve ser confundido com a
+  // escolha de uma transmissão pelo usuário.
+  async function clickParticipantForCollection(item) {
+    if (!item) return;
+    try { item.setAttribute('data-neri-gallery-collect', '1'); } catch (_) {}
+    try { item.click(); } catch (_) {}
+    await nextFrame();
+    try { item.removeAttribute('data-neri-gallery-collect'); } catch (_) {}
+  }
+
+  // O Nerimity guarda o stream de cada usuário no store interno. Para pegar
+  // todos sem mexer nesse store, selecionamos cada participante que está
+  // compartilhando e lemos o srcObject do vídeo nativo.
+  async function collectShareStreams() {
+    if (galleryState.collecting) return;
+    const now = Date.now();
+    const pending = sharerItems().filter((item) => {
+      const id = userIdFromItem(item);
+      if (!id || galleryState.streams.has(id)) return false;
+      return now - (galleryState.collectAttempts.get(id) || 0) > 1500;
+    });
+    if (!pending.length) return;
+
+    galleryState.collecting = true;
+    const previous = document.querySelector(
+      '[class*="voiceParticipantItem"][class*="selected"]'
+    );
+    try {
+      for (const item of pending) {
+        if (!item.isConnected) continue;
+        const id = userIdFromItem(item);
+        galleryState.collectAttempts.set(id, Date.now());
+        if (!isSelectedParticipant(item)) {
+          await clickParticipantForCollection(item);
+        }
+        const stream = nativeShareVideo()?.srcObject;
+        if (stream) {
+          galleryState.streams.set(id, { stream, name: shareNameFromItem(item) });
+        }
+      }
+    } finally {
+      galleryState.collecting = false;
+      if (previous?.isConnected && !isSelectedParticipant(previous) && !videoPlayer) {
+        await clickParticipantForCollection(previous);
+      }
+    }
+    // Pode não haver mutação de DOM depois da leitura dos streams: força
+    // uma sincronização para montar as prévias.
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => syncShareGallery());
+    } else {
+      setTimeout(() => syncShareGallery(), 0);
+    }
+  }
+
+  function renderShareGallery() {
+    const container = nativeShareContainer();
+    if (!container) return;
+    let gallery = container.querySelector('#neri-share-gallery');
+    if (!gallery) {
+      gallery = document.createElement('div');
+      gallery.id = 'neri-share-gallery';
+      container.appendChild(gallery);
+    }
+    galleryState.container = gallery;
+    gallery.innerHTML = '';
+
+    for (const [id, entry] of galleryState.streams) {
+      const tile = document.createElement('div');
+      tile.className = 'neri-share-tile';
+      tile.setAttribute('data-user-id', id);
+      tile.title = entry.name || 'Screen share';
+
+      const video = document.createElement('video');
+      video.className = 'neri-share-preview';
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      try {
+        video.srcObject = entry.stream;
+        video.play?.()?.catch?.(() => {});
+      } catch (_) {}
+
+      const label = document.createElement('span');
+      label.className = 'neri-share-name';
+      label.textContent = entry.name || 'Screen share';
+
+      tile.appendChild(video);
+      tile.appendChild(label);
+      tile.addEventListener('click', (event) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        focusShare(id);
+      });
+      gallery.appendChild(tile);
+    }
+  }
+
+  function setGalleryMode(active) {
+    galleryState.active = !!active;
+    const container = nativeShareContainer();
+    container?.classList.toggle('neri-gallery-open', !!active);
+    const video = nativeShareVideo();
+    if (active) {
+      if (video && galleryState.nativeMuted === null) {
+        galleryState.nativeMuted = !!video.muted;
+      }
+      if (video) video.muted = true;
+    } else if (video) {
+      // Sem slider de volume = é a própria transmissão (já vem muda).
+      const hasVolume = !!container?.querySelector('[class*="volumeSlider"]');
+      video.muted = hasVolume ? galleryState.nativeMuted === true : true;
+      galleryState.nativeMuted = null;
+    }
+  }
+
+  async function focusShare(id, alreadySelected = false) {
+    if (videoPlayer) return;
+    const item = sharerItems().find((el) => userIdFromItem(el) === id);
+    if (item && !alreadySelected && !isSelectedParticipant(item)) {
+      try { item.click(); } catch (_) {}
+      await nextFrame();
+    }
+    setGalleryMode(false);
+    const video = nativeShareVideo();
+    try { video?.play?.()?.catch?.(() => {}); } catch (_) {}
+  }
+
+  function showShareGallery() {
+    if (videoPlayer || galleryState.collecting) return;
+    setGalleryMode(true);
+  }
+
+  function syncShareGallery() {
+    const g = galleryState;
+    const header = shareHeader();
+    const container = nativeShareContainer();
+    const items = sharerItems();
+    const ids = [...new Set(items.map(userIdFromItem).filter(Boolean))].sort();
+    const idsSignature = ids.join('|');
+
+    if (!header || !container || (!ids.length && !g.streams.size)) {
+      if (g.container) {
+        try { g.container.remove(); } catch (_) {}
+        g.container = null;
+      }
+      container?.classList.remove('neri-gallery-open');
+      g.renderedSignature = '';
+      g.idsSignature = '';
+      g.collectAttempts.clear();
+      g.nativeMuted = null;
+      g.active = false;
+      return;
+    }
+
+    for (const [id, entry] of g.streams) {
+      const track = entry.stream?.getVideoTracks?.()?.[0];
+      if (!ids.includes(id) || !track || track.readyState === 'ended') {
+        g.streams.delete(id);
+        g.collectAttempts.delete(id);
+      }
+    }
+
+    const activeSignature = [...g.streams.keys()].sort().join('|');
+    if (activeSignature !== g.renderedSignature) {
+      g.renderedSignature = activeSignature;
+      renderShareGallery();
+    }
+
+    if (idsSignature !== g.idsSignature) {
+      const anteriores = new Set(g.idsSignature.split('|').filter(Boolean));
+      g.idsSignature = idsSignature;
+      // Só uma transmissão nova reabre a grade; uma que terminou não muda
+      // o que o usuário estava vendo.
+      if (ids.some((id) => !anteriores.has(id))) g.active = true;
+    }
+
+    if (ids.some((id) => !g.streams.has(id))) collectShareStreams();
+
+    const video = nativeShareVideo();
+    if (g.active) {
+      container.classList.add('neri-gallery-open');
+      if (video) video.muted = true;
+    } else {
+      container.classList.remove('neri-gallery-open');
+    }
+  }
+
+  // Clique num participante que está transmitindo: foca aquela transmissão.
+  document.addEventListener('click', (event) => {
+    if (videoPlayer || galleryState.collecting || !galleryState.active) return;
+    const item = event.target?.closest?.('[class*="voiceParticipantItem"]');
+    if (!item || item.getAttribute?.('data-neri-gallery-collect') === '1') return;
+    const id = userIdFromItem(item);
+    if (!id || !galleryState.streams.has(id)) return;
+    setTimeout(() => {
+      if (galleryState.active) focusShare(id, true);
+    }, 0);
+  }, true);
+
+  // Clique no vídeo já focado volta para a grade de transmissões.
+  document.addEventListener('click', (event) => {
+    if (videoPlayer || galleryState.active || galleryState.collecting) return;
+    const video = event.target?.closest?.('video');
+    if (!video || video.closest('#neri-share-gallery')) return;
+    const container = nativeShareContainer();
+    if (!container || !container.contains(video)) return;
+    event.preventDefault?.();
+    showShareGallery();
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    if (event?.key !== 'Escape') return;
+    if (videoPlayer || galleryState.active || galleryState.collecting) return;
+    if (document.querySelector('#neri-camera-overlay-modal, #neri-venmic-modal, #neri-tts-modal, #neri-extras-modal')) return;
+    const container = nativeShareContainer();
+    if (!container?.querySelector('video')) return;
+    event.preventDefault?.();
+    showShareGallery();
+  });
 
   const originalGetDisplayMedia =
     navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
@@ -1878,6 +2207,7 @@
         ensureNativeButtons();
         labelNativeIcons();
         updateButtons();
+        syncShareGallery();
         if (!findCallBar()) {
           closeVideoPlayer();
           if (state.screenSharing || state.cameraOverlay || activeComposition) {

@@ -143,8 +143,11 @@
       if (!venmicInclude.length) noAudioChosen = true;
     }
 
+    // No Wayland o portal fornece apenas vídeo; o áudio vem do popup venmic
+    // depois da seleção. Pedir audio:true pode fazer o portal falhar e
+    // reiniciar o seletor em loop.
     const callConstraints = state.isWayland
-      ? { ...constraints, audio: true }
+      ? { ...constraints, audio: false }
       : constraints;
     let stream;
     try {
@@ -256,8 +259,9 @@
     if (!state.isWayland) return;
 
     const restore = () => {
+      // No Wayland o seletor interno do Nerimity nunca deve voltar a aparecer.
+      // Apenas libera o estado para um próximo clique em compartilhar.
       if (waylandPickerModal) {
-        waylandPickerModal.style.removeProperty('display');
         delete waylandPickerModal.dataset.neriWaylandPicker;
         waylandPickerModal = null;
       }

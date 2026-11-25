@@ -199,6 +199,17 @@ function setupDisplayMedia(webContentsSession) {
   // useSystemPicker do Electron é macOS 15+ (experimental). No Wayland o
   // seletor do dono da sessão é aberto por desktopCapturer.getSources().
   console.log('[display-media] instalando handler', { isWayland });
+  // Permite câmera para o stream composto e mantém copiar/colar funcionando.
+  const allowedPermissions = new Set([
+    'media',
+    'display-capture',
+    'clipboard-read',
+    'clipboard-write',
+    'clipboard-sanitized-write',
+  ]);
+  webContentsSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(allowedPermissions.has(permission));
+  });
   webContentsSession.setDisplayMediaRequestHandler(async (request, callback) => {
     console.log('[display-media] request', {
       video: request.videoRequested,
@@ -667,7 +678,25 @@ function registerIpcHandlers() {
     if (mainWindow.isMaximized()) mainWindow.unmaximize();
     else mainWindow.maximize();
   });
-  ipcMain.on('window-close', () => mainWindow?.hide());
+  ipcMain.on('window-close', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isFullScreen()) {
+      mainWindow.setFullScreen(false);
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+      }, 150);
+      return;
+    }
+    mainWindow.hide();
+  });
+  ipcMain.on('window-toggle-fullscreen', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  });
+  ipcMain.on('window-set-fullscreen', (_event, value) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.setFullScreen(!!value);
+  });
 
   // Configurações
   ipcMain.handle('get-autostart', () => getSetting('autostart', true));

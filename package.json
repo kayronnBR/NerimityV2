@@ -9,7 +9,8 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --linux appimage",
-    "build:flatpak": "electron-builder --linux flatpak"
+    "build:flatpak": "electron-builder --linux flatpak",
+    "build:win": "electron-builder --win nsis --x64"
   },
   "dependencies": {
     "@vencord/venmic": "7.2.5"
@@ -80,6 +81,24 @@
         "--talk-name=org.freedesktop.Flatpak",
         "--talk-name=org.freedesktop.portal.ScreenCast"
       ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icons/256x256.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

@@ -38,6 +38,20 @@
     // Wayland
     isWayland: false,
     waylandPickerHandled: false,
+    // Tela + câmera
+    screenStream: null,
+    shareVideoTrack: null,
+    screenSharing: false,
+    cameraOn: false,
+    cameraStream: null,
+    cameraTrack: null,
+    cameraOverlay: false,
+    composedVideoTrack: null,
+    endingShare: false,
+    pendingCameraOverlay: false,
+    videoSenders: new Set(),
+    iconSignatureCache: new Map(),
+    overlaySettings: { position: 'bottom-right', opacity: 100 },
   };
 
   const log = (...args) => console.log('[NeriExtras]', ...args);
@@ -88,8 +102,294 @@
     return originalPlay.apply(this, args);
   };
 
+  function fallbackWindowFullscreen() {
+    try {
+      if (window.WindowAPI?.toggleFullscreen) {
+        window.WindowAPI.toggleFullscreen();
+        return Promise.resolve();
+      }
+    } catch (_) {}
+    return Promise.reject();
+  }
+
+  let fullscreenToggleAt = 0;
+  function triggerWindowFullscreen() {
+    const now = Date.now();
+    if (now - fullscreenToggleAt < 400) return;
+    fullscreenToggleAt = now;
+    fallbackWindowFullscreen();
+  }
+
+  // Fullscreen da janela, equivalente ao F11. Usa um IPC explícito para
+  // entrar/sair sem depender de um toggle (evita duplo toggle).
+  function setWindowFullscreen(value) {
+    try { window.WindowAPI?.setFullscreen?.(!!value); } catch (_) {}
+  }
+
+  // Tenta colocar o próprio vídeo da transmissão em tela cheia. Só cai para
+  // o fullscreen da janela se o navegador/Electron recusar o elemento.
+  async function fullscreenVideoFromButton(btn) {
+    const container = btn?.closest?.('[class*="videoContainer"]') || btn?.parentElement;
+    const video = container?.querySelector?.('video') || container?.parentElement?.querySelector?.('video');
+    if (!video?.requestFullscreen) return false;
+    try {
+      await video.requestFullscreen();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Reprodutor em tela cheia, igual ao da versão original: o próprio vídeo
+  // da transmissão é movido para um overlay HTML que ocupa a tela toda.
+  let videoPlayer = null;
+
+  function onVideoPlayerKey(e) {
+    if (e?.key === 'Escape') closeVideoPlayer();
+  }
+
+  function closeVideoPlayer() {
+    const player = videoPlayer;
+    if (!player) return;
+    videoPlayer = null;
+    clearTimeout(player.hideTimer);
+    setWindowFullscreen(false);
+    document.removeEventListener?.('keydown', onVideoPlayerKey);
+    document.removeEventListener?.('fullscreenchange', onDocumentFullscreenChange);
+    try { player.video.removeEventListener?.('click', onVideoClick, true); } catch (_) {}
+    try { player.video.pause = player.originalPause; } catch (_) {}
+    try { player.video.controls = player.originalControls; } catch (_) {}
+    try {
+      player.originalParent?.insertBefore?.(player.video, player.originalNext);
+    } catch (_) {}
+    try { player.overlay.remove(); } catch (_) {}
+  }
+
+  function onVideoClick(e) {
+    const player = videoPlayer;
+    if (!player) return;
+    e?.preventDefault?.();
+    try { player.video.play?.()?.catch?.(() => {}); } catch (_) {}
+    // Clique na imagem esconde a barra imediatamente.
+    try {
+      clearTimeout(player.hideTimer);
+      player.controls.style.opacity = '0';
+      player.controls.style.pointerEvents = 'none';
+    } catch (_) {}
+  }
+
+  function onDocumentFullscreenChange() {
+    const player = videoPlayer;
+    if (!player) return;
+    const active = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!active) closeVideoPlayer();
+  }
+
+  const PLAYER_ICONS = {
+    volumeOn: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>',
+    volumeOff: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16 9l5 6m0-6l-5 6" stroke="currentColor" stroke-width="2" fill="none"/></svg>',
+    exit: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M5 5h5v2H7v3H5V5zm9 0h5v5h-2V7h-3V5zM5 14h2v3h3v2H5v-5zm12 0h2v5h-5v-2h3v-3z"/></svg>',
+  };
+
+  function openVideoPlayer(btn) {
+    if (videoPlayer) { closeVideoPlayer(); return true; }
+    const container = btn?.closest?.('[class*="videoContainer"]') || btn?.parentElement;
+    const video = container?.querySelector?.('video') || container?.parentElement?.querySelector?.('video');
+    if (!video) return false;
+
+    const originalParent = video.parentElement;
+    const originalNext = video.nextSibling;
+    const originalControls = video.controls;
+    const originalPause = video.pause;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'neri-video-fullscreen';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#000;display:flex;align-items:center;justify-content:center';
+
+    const holder = document.createElement('div');
+    holder.style.cssText = 'position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center';
+    overlay.appendChild(holder);
+
+    try { document.body.appendChild(overlay); } catch (_) { return false; }
+
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'contain';
+    try { holder.appendChild(video); } catch (_) { overlay.appendChild(video); }
+
+    // Player próprio: sem controles nativos (sem pause) e sem depender do
+    // fullscreen do navegador, que o Electron não fecha corretamente.
+    try { video.controls = false; } catch (_) {}
+
+    const controls = document.createElement('div');
+    controls.id = 'neri-player-controls';
+    holder.appendChild(controls);
+
+    const muteBtn = document.createElement('button');
+    muteBtn.type = 'button';
+    muteBtn.id = 'neri-player-mute';
+    muteBtn.className = 'neri-player-btn';
+    muteBtn.title = 'Mute';
+    muteBtn.innerHTML = PLAYER_ICONS.volumeOn;
+    controls.appendChild(muteBtn);
+
+    const volume = document.createElement('input');
+    volume.type = 'range';
+    volume.id = 'neri-player-volume';
+    volume.className = 'neri-player-volume';
+    volume.min = '0';
+    volume.max = '1';
+    volume.step = '0.01';
+    volume.value = String(video.muted ? 0 : (video.volume ?? 1));
+    controls.appendChild(volume);
+
+    const spacer = document.createElement('span');
+    spacer.className = 'neri-player-spacer';
+    controls.appendChild(spacer);
+
+    const exitBtn = document.createElement('button');
+    exitBtn.type = 'button';
+    exitBtn.id = 'neri-player-exit';
+    exitBtn.className = 'neri-player-btn';
+    exitBtn.title = 'Exit fullscreen';
+    exitBtn.innerHTML = PLAYER_ICONS.exit;
+    controls.appendChild(exitBtn);
+
+    const player = {
+      overlay, holder, controls, video, originalParent, originalNext,
+      originalControls, originalPause, hideTimer: 0,
+    };
+    videoPlayer = player;
+
+    const syncMute = () => {
+      muteBtn.innerHTML = video.muted ? PLAYER_ICONS.volumeOff : PLAYER_ICONS.volumeOn;
+      muteBtn.title = video.muted ? 'Unmute' : 'Mute';
+      volume.value = String(video.muted ? 0 : (video.volume ?? 1));
+    };
+    muteBtn.addEventListener('click', (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      try { video.muted = !video.muted; } catch (_) {}
+      syncMute();
+    });
+    volume.addEventListener('input', (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      const value = Number(volume.value);
+      try { video.volume = value; video.muted = value === 0; } catch (_) {}
+      syncMute();
+    });
+    exitBtn.addEventListener('click', (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      closeVideoPlayer();
+    });
+    syncMute();
+
+    // Controles desaparecem sozinhos e voltam ao mover o mouse.
+    let hideTimer = 0;
+    const showControls = () => {
+      controls.style.opacity = '1';
+      controls.style.pointerEvents = 'auto';
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        controls.style.opacity = '0';
+        controls.style.pointerEvents = 'none';
+      }, 2500);
+      player.hideTimer = hideTimer;
+    };
+    overlay.addEventListener('mousemove', showControls);
+    showControls();
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay || e.target === holder) closeVideoPlayer();
+    });
+    document.addEventListener?.('keydown', onVideoPlayerKey);
+    try { video.addEventListener?.('click', onVideoClick, true); } catch (_) {}
+    try { video.pause = () => {}; } catch (_) {}
+
+    document.addEventListener?.('fullscreenchange', onDocumentFullscreenChange);
+    try { video.play?.()?.catch?.(() => {}); } catch (_) {}
+    setWindowFullscreen(true);
+    return true;
+  }
+
+  // O botão de sair dos controles nativos chama document.exitFullscreen().
+  // Aproveita para fechar o player e tirar a janela do fullscreen também.
+  try {
+    if (document?.exitFullscreen) {
+      const originalExitFullscreen = document.exitFullscreen.bind(document);
+      document.exitFullscreen = function (...args) {
+        closeVideoPlayer();
+        return originalExitFullscreen(...args);
+      };
+    }
+  } catch (_) {}
+
+  let fullscreenClickAt = 0;
+  async function handleFullscreenClick(btn) {
+    const now = Date.now();
+    if (now - fullscreenClickAt < 400) return;
+    fullscreenClickAt = now;
+    if (openVideoPlayer(btn)) return;
+    const videoFullscreen = await fullscreenVideoFromButton(btn);
+    if (!videoFullscreen) triggerWindowFullscreen();
+  }
+
+  // Electron rejeita requestFullscreen({ navigationUI: 'hide' }) usado pelo
+  // Nerimity. Mantém o gesto do usuário e chama sem essa opção.
+  const fullscreenProto = typeof Element !== 'undefined' ? Element.prototype : null;
+  if (fullscreenProto?.requestFullscreen) {
+    const originalRequestFullscreen = fullscreenProto.requestFullscreen;
+    fullscreenProto.requestFullscreen = function (options) {
+      const safeOptions = options && 'navigationUI' in options ? undefined : options;
+      let result;
+      try {
+        result = originalRequestFullscreen.call(this, safeOptions);
+      } catch (_) {
+        try { result = originalRequestFullscreen.call(this); }
+        catch (_) { result = Promise.reject(); }
+      }
+      return Promise.resolve(result).catch(() => {
+        // Electron pode rejeitar o elemento de vídeo. Tenta o documento
+        // inteiro e, por último, o fullscreen nativo da janela.
+        try { return originalRequestFullscreen.call(document.documentElement); }
+        catch (_) { triggerWindowFullscreen(); return Promise.resolve(); }
+      });
+    };
+  }
+
   const originalGetDisplayMedia =
     navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+  const originalGetUserMedia =
+    navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+
+  navigator.mediaDevices.getUserMedia = async function (constraints = {}) {
+    const stream = await originalGetUserMedia(constraints);
+    if (constraints.video) {
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        state.cameraStream = stream;
+        state.cameraTrack = track;
+        state.cameraOn = true;
+        const clear = () => {
+          if (state.cameraTrack !== track) return;
+          state.cameraOn = false;
+          state.cameraStream = null;
+          state.cameraTrack = null;
+          if (activeComposition && activeComposition.cameraTrack === track) {
+            applyCameraOverlay(false);
+          }
+          updateButtons();
+        };
+        const originalStop = track.stop.bind(track);
+        track.stop = () => { clear(); originalStop(); };
+        track.addEventListener?.('ended', clear, { once: true });
+        updateButtons();
+      }
+    }
+    return stream;
+  };
 
   async function waitForVenmicDevice(timeoutMs = 4000) {
     const start = Date.now();
@@ -107,6 +407,349 @@
       stream.removeTrack(track);
       try { track.stop(); } catch (_) {}
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Tela + câmera em um único stream de vídeo. A transmissão começa sem câmera;
+  // ela entra somente depois que o usuário clica no botão.
+  // -------------------------------------------------------------------------
+  let activeComposition = null;
+
+  function saveSetting(key, value) {
+    try { return API.setSetting(key, value); } catch (_) { return undefined; }
+  }
+
+  function waitForVideoReady(video, timeoutMs = 3000) {
+    const ready = () => (video.readyState || 0) >= 2 && video.videoWidth > 0 && video.videoHeight > 0;
+    if (ready()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(ready());
+      };
+      video.addEventListener?.('loadeddata', finish, { once: true });
+      video.addEventListener?.('canplay', finish, { once: true });
+      const timer = setTimeout(finish, timeoutMs);
+    });
+  }
+
+  function repaintComposition() {
+    const c = activeComposition;
+    try { c?.paint?.(); } catch (_) {}
+  }
+
+  function overlayPosition() {
+    const p = state.overlaySettings?.position || 'bottom-right';
+    return /^(top|middle|bottom)-(left|center|right)$/.test(p) ? p : 'bottom-right';
+  }
+
+  function cameraRect(sw, sh, pipW, pipH, margin) {
+    const [vertical, horizontal] = overlayPosition().split('-');
+    const x = horizontal === 'left' ? margin
+      : horizontal === 'center' ? Math.round((sw - pipW) / 2)
+      : sw - pipW - margin;
+    const y = vertical === 'top' ? margin
+      : vertical === 'middle' ? Math.round((sh - pipH) / 2)
+      : sh - pipH - margin;
+    return { x, y };
+  }
+
+  async function replaceVideoTrack(track) {
+    if (!track) return;
+    for (const sender of state.videoSenders) {
+      try {
+        if (sender.track?.kind === 'video' && sender.replaceTrack) {
+          await sender.replaceTrack(track);
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (typeof RTCPeerConnection !== 'undefined' && RTCPeerConnection.prototype?.addTrack) {
+    const originalAddTrack = RTCPeerConnection.prototype.addTrack;
+    RTCPeerConnection.prototype.addTrack = function (track, ...streams) {
+      let finalTrack = track;
+      if (state.screenSharing && state.cameraOverlay && activeComposition &&
+          track === state.cameraTrack) {
+        finalTrack = activeComposition.composedTrack;
+      }
+      const sender = originalAddTrack.call(this, finalTrack, ...streams);
+      if (streams.some((s) => s === state.screenStream) ||
+          finalTrack === state.shareVideoTrack ||
+          (activeComposition && finalTrack === activeComposition.composedTrack)) {
+        state.videoSenders.add(sender);
+      }
+      return sender;
+    };
+  }
+
+  function closeCameraPanel() {
+    document.getElementById('neri-camera-overlay-modal')?.remove();
+  }
+
+  async function handleScreenShareEnded() {
+    if (state.endingShare) return;
+    if (!state.screenSharing && !activeComposition) return;
+    state.endingShare = true;
+    try {
+      cleanupComposition({ keepScreen: false });
+      state.screenSharing = false;
+      state.cameraOverlay = false;
+      state.screenStream = null;
+      state.shareVideoTrack = null;
+      state.composedVideoTrack = null;
+      state.pendingCameraOverlay = false;
+      closeCameraPanel();
+      if (state.isWayland) {
+        document.dispatchEvent(new Event('neri-wayland-share-ended'));
+      }
+      updateButtons();
+    } finally {
+      state.endingShare = false;
+    }
+  }
+
+  function registerScreenShare(stream) {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    cleanupComposition({ keepScreen: true });
+    state.screenStream = stream;
+    state.shareVideoTrack = track;
+    state.screenSharing = true;
+    state.cameraOverlay = false;
+    state.composedVideoTrack = null;
+    const originalStop = track.stop.bind(track);
+    if (!track.__neriShareStopWrapped) {
+      track.__neriShareStopWrapped = true;
+      track.stop = () => {
+        if (!state.endingShare) handleScreenShareEnded();
+        originalStop();
+      };
+      track.addEventListener?.('ended', handleScreenShareEnded, { once: true });
+    }
+    if (state.pendingCameraOverlay) {
+      state.pendingCameraOverlay = false;
+      setTimeout(() => { applyCameraOverlay(true); }, 0);
+    }
+    updateButtons();
+  }
+
+  function cleanupComposition({ keepScreen = true } = {}) {
+    const c = activeComposition;
+    if (!c) return;
+    activeComposition = null;
+    if (c.stopped) return;
+    c.stopped = true;
+    if (c.raf) cancelAnimationFrame(c.raf);
+    try { c.composedTrack?.removeEventListener?.('ended', c.onEnded); } catch (_) {}
+    for (const v of [c.screenVideo, c.camVideo]) {
+      try { v.pause?.(); v.srcObject = null; v.remove?.(); } catch (_) {}
+    }
+    try { c.host?.remove?.(); } catch (_) {}
+    try { c.canvas.width = 0; c.canvas.height = 0; } catch (_) {}
+    try { c.originalComposedStop?.(); } catch (_) {}
+    if (!c.borrowedCamera) {
+      try { c.cameraTrack?.stop(); } catch (_) {}
+    }
+    try { c.stream?.removeTrack?.(c.composedTrack); } catch (_) {}
+    if (c.screenTrack && c.stream && !c.stream.getVideoTracks().includes(c.screenTrack)) {
+      try { c.stream.addTrack(c.screenTrack); } catch (_) {}
+    }
+    for (const sender of state.videoSenders) {
+      try {
+        if (sender.track === c.composedTrack && sender.replaceTrack) {
+          sender.replaceTrack(c.screenTrack).catch?.(() => {});
+        }
+      } catch (_) {}
+    }
+    state.composedVideoTrack = null;
+    if (!keepScreen) {
+      try { c.screenTrack?.stop?.(); } catch (_) {}
+      c.stream?.getAudioTracks?.().forEach((t) => { try { t.stop(); } catch (_) {} });
+    }
+  }
+
+  async function startComposition() {
+    if (activeComposition) return true;
+    const screenTrack = state.shareVideoTrack || state.screenStream?.getVideoTracks?.()[0];
+    if (!screenTrack || screenTrack.readyState === 'ended') return false;
+
+    const borrowed = !!(state.cameraOn && state.cameraTrack && state.cameraTrack.readyState !== 'ended');
+    let cameraStream = null;
+    if (borrowed) {
+      cameraStream = state.cameraStream || new MediaStream([state.cameraTrack]);
+    } else {
+      try {
+        cameraStream = await originalGetUserMedia({
+          audio: false,
+          video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30 } },
+        });
+      } catch (e) {
+        log('câmera indisponível; compartilhando só a tela', e);
+        return false;
+      }
+    }
+    const cameraTrack = cameraStream?.getVideoTracks?.()[0];
+    if (!cameraTrack) {
+      if (!borrowed) cameraStream?.getTracks?.().forEach((t) => { try { t.stop(); } catch (_) {} });
+      return false;
+    }
+
+    const host = document.createElement('div');
+    host.id = 'neri-camera-composite';
+    host.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);pointer-events:none;z-index:-1';
+
+    const screenVideo = document.createElement('video');
+    screenVideo.muted = true;
+    screenVideo.playsInline = true;
+    screenVideo.autoplay = true;
+    try {
+      screenVideo.srcObject = typeof MediaStream === 'function'
+        ? new MediaStream([screenTrack])
+        : state.screenStream;
+    } catch (_) {
+      try { screenVideo.srcObject = state.screenStream; } catch (_) {}
+    }
+
+    const camVideo = document.createElement('video');
+    camVideo.muted = true;
+    camVideo.playsInline = true;
+    camVideo.autoplay = true;
+    try { camVideo.srcObject = cameraStream; } catch (_) {}
+
+    try {
+      host.appendChild(screenVideo);
+      host.appendChild(camVideo);
+      document.body.appendChild(host);
+    } catch (_) {}
+
+    const fail = () => {
+      if (!borrowed) { try { cameraTrack.stop(); } catch (_) {} }
+      try { host.remove?.(); } catch (_) {}
+      return false;
+    };
+
+    try { await Promise.all([screenVideo.play(), camVideo.play()]); } catch (_) {}
+    const [screenReady, camReady] = await Promise.all([
+      waitForVideoReady(screenVideo),
+      waitForVideoReady(camVideo),
+    ]);
+    if (!screenReady || !camReady) {
+      log('sem frames de vídeo; compartilhando só a tela', { screenReady, camReady });
+      return fail();
+    }
+
+    const settings = screenTrack.getSettings?.() || {};
+    const sw = screenVideo.videoWidth || settings.width || 1280;
+    const sh = screenVideo.videoHeight || settings.height || 720;
+    const canvas = document.createElement('canvas');
+    canvas.width = sw;
+    canvas.height = sh;
+    try { canvas.style.cssText = 'width:1px;height:1px;pointer-events:none'; } catch (_) {}
+    try { host.appendChild(canvas); } catch (_) {}
+    const ctx = canvas.getContext('2d');
+
+    const c = {
+      stopped: false,
+      raf: 0,
+      stream: state.screenStream,
+      host,
+      screenTrack,
+      cameraTrack,
+      borrowedCamera: borrowed,
+      screenVideo,
+      camVideo,
+      canvas,
+      composedTrack: null,
+      paint: null,
+      originalComposedStop: null,
+      onEnded: null,
+    };
+    activeComposition = c;
+
+    const paint = () => {
+      if (c.stopped) return;
+      if ((screenVideo.readyState || 0) < 2 || !screenVideo.videoWidth) return;
+      try {
+        ctx.drawImage(screenVideo, 0, 0, sw, sh);
+        const pipW = Math.max(48, Math.round(sw * 0.22));
+        const ratio = (camVideo.videoHeight || 360) / (camVideo.videoWidth || 640);
+        const pipH = Math.max(36, Math.round(pipW * ratio));
+        const margin = Math.max(6, Math.round(sw * 0.02));
+        const { x, y } = cameraRect(sw, sh, pipW, pipH, margin);
+        const opacity = Math.max(0.2, Math.min(1,
+          (state.overlaySettings?.opacity ?? 100) / 100));
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        if (typeof ctx.roundRect === 'function') {
+          ctx.beginPath();
+          ctx.roundRect(x, y, pipW, pipH, 8);
+          ctx.clip();
+        }
+        ctx.drawImage(camVideo, 0, 0, camVideo.videoWidth || 640, camVideo.videoHeight || 360, x, y, pipW, pipH);
+        ctx.restore();
+      } catch (_) {}
+      try { c.composedTrack?.requestFrame?.(); } catch (_) {}
+    };
+
+    c.paint = paint;
+
+    const draw = () => {
+      if (c.stopped) return;
+      paint();
+      c.raf = requestAnimationFrame(draw);
+    };
+    draw();
+
+    let composed;
+    try {
+      composed = canvas.captureStream(30).getVideoTracks()[0];
+    } catch (e) {
+      log('canvas.captureStream falhou', e);
+      cleanupComposition({ keepScreen: true });
+      return fail();
+    }
+    if (!composed) {
+      cleanupComposition({ keepScreen: true });
+      return fail();
+    }
+
+    c.composedTrack = composed;
+    c.originalComposedStop = composed.stop.bind(composed);
+    composed.stop = () => {
+      if (!state.endingShare) handleScreenShareEnded();
+      c.originalComposedStop();
+    };
+    c.onEnded = () => { handleScreenShareEnded(); };
+    composed.addEventListener?.('ended', c.onEnded, { once: true });
+
+    c.stream?.removeTrack?.(screenTrack);
+    c.stream?.addTrack?.(composed);
+    state.composedVideoTrack = composed;
+    await replaceVideoTrack(composed);
+    paint();
+    log('tela + câmera ativas no mesmo stream');
+    return true;
+  }
+
+  async function applyCameraOverlay(enabled) {
+    if (!state.screenSharing) return false;
+    if (enabled) {
+      const ok = activeComposition ? true : await startComposition();
+      if (activeComposition) repaintComposition();
+      state.cameraOverlay = ok;
+      if (!ok) toast('Could not start the camera for this share', 'error');
+      updateButtons();
+      return ok;
+    }
+    cleanupComposition({ keepScreen: true });
+    state.cameraOverlay = false;
+    await replaceVideoTrack(state.shareVideoTrack);
+    updateButtons();
+    return true;
   }
 
   async function applyVenmicAudio(stream, include) {
@@ -152,6 +795,7 @@
     let stream;
     try {
       stream = await originalGetDisplayMedia(callConstraints);
+      registerScreenShare(stream);
     } catch (error) {
       if (state.isWayland) {
         document.dispatchEvent(new Event('neri-wayland-share-failed'));
@@ -175,9 +819,6 @@
           stripAudioTracks(stream);
           log('sharing without audio (no app selected)');
         }
-        stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-          document.dispatchEvent(new Event('neri-wayland-share-ended'));
-        }, { once: true });
         return stream;
       }
 
@@ -390,6 +1031,121 @@
           finish(selected);
         }
       });
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Botão/painel da câmera dentro da tela: só aparece durante a transmissão.
+  // -------------------------------------------------------------------------
+  function openCameraOverlaySettings() {
+    const old = document.getElementById('neri-camera-overlay-modal');
+    if (old) { old.remove(); return; }
+
+    const modal = document.createElement('div');
+    modal.id = 'neri-camera-overlay-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:rgba(0,0,0,0.45)';
+    modal.innerHTML = `<div class="neri-extras-popover" style="width:min(360px,calc(100vw - 24px))"><div class="neri-extras-card">
+      <div class="neri-extras-head neri-extras-drag"><span><span class="material-symbols-rounded">videocam</span> Camera on screen share</span><button type="button" class="neri-extras-close" data-act="close" title="Close">&times;</button></div>
+      <label style="display:flex;gap:8px;align-items:center;margin:10px 0;font-size:13px"><input type="checkbox" id="neri-cam-enabled" ${state.cameraOverlay ? 'checked' : ''}> Show camera inside the screen share</label>
+      <div style="font-size:12px;opacity:.75;margin-bottom:6px">Camera position</div>
+      <div id="neri-cam-positions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px"></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:10px"><span>Camera transparency</span><span id="neri-cam-opacity-label">${state.overlaySettings?.opacity ?? 100}%</span></div>
+      <input type="range" id="neri-cam-opacity" min="20" max="100" value="${state.overlaySettings?.opacity ?? 100}" style="width:100%">
+      <div style="font-size:11px;opacity:.7;margin-top:10px">Saved on this computer. Each new share starts without the camera.</div>
+      <div class="neri-extras-row" style="gap:8px;margin-top:12px">
+        <button type="button" data-act="close" style="flex:1">Cancel</button>
+        <button type="button" data-act="save" class="primary" style="flex:1">Save</button>
+      </div>
+    </div></div>`;
+    document.body.appendChild(modal);
+    makePopoverDraggable(modal.querySelector('.neri-extras-popover'));
+
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      try { document.removeEventListener?.('keydown', onKey); } catch (_) {}
+      modal.remove();
+    };
+    const onKey = (e) => { if (e?.key === 'Escape') close(); };
+    document.addEventListener?.('keydown', onKey);
+
+    const bind = (selector, handler) => {
+      modal.querySelectorAll(selector).forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e?.preventDefault?.();
+          e?.stopPropagation?.();
+          handler(btn);
+        });
+      });
+    };
+
+    const positions = [
+      'top-left', 'top-center', 'top-right',
+      'middle-left', 'middle-center', 'middle-right',
+      'bottom-left', 'bottom-center', 'bottom-right',
+    ];
+    let draftPosition = overlayPosition();
+    const opacityInput = modal.querySelector('#neri-cam-opacity');
+    const opacityLabel = modal.querySelector('#neri-cam-opacity-label');
+    const onOpacityInput = () => {
+      if (opacityLabel) opacityLabel.textContent = opacityInput.value + '%';
+      const value = Math.max(20, Math.min(100, Number(opacityInput?.value) || 100));
+      state.overlaySettings = { ...state.overlaySettings, opacity: value };
+      repaintComposition();
+    };
+    opacityInput?.addEventListener?.('input', onOpacityInput);
+    onOpacityInput();
+    const grid = modal.querySelector('#neri-cam-positions');
+    const renderPositions = () => {
+      grid.innerHTML = positions.map((p) => {
+        const active = p === draftPosition;
+        const bg = active ? 'var(--primary-color, #5865f2)' : 'rgba(255,255,255,0.06)';
+        const fg = active ? '#fff' : 'rgba(255,255,255,0.72)';
+        const border = active ? 'var(--primary-color, #5865f2)' : 'rgba(255,255,255,0.12)';
+        return `<button type="button" data-act="pos" data-pos="${p}" class="${active ? 'primary' : ''}" style="font-size:11px;padding:5px;background:${bg};color:${fg};border:1px solid ${border};font-weight:${active ? 600 : 400}">${p.replace('-', ' ')}</button>`;
+      }).join('');
+      grid.querySelectorAll('[data-act="pos"]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e?.preventDefault?.();
+          e?.stopPropagation?.();
+          draftPosition = btn.getAttribute('data-pos');
+          renderPositions();
+        });
+      });
+    };
+    renderPositions();
+
+    bind('[data-act="close"]', close);
+    bind('[data-act="save"]', async (btn) => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      try {
+        const enabled = !!modal.querySelector('#neri-cam-enabled')?.checked;
+        const opacity = Math.max(20, Math.min(100, Number(opacityInput?.value) || 100));
+        state.overlaySettings = { ...state.overlaySettings, position: draftPosition, opacity };
+        await saveSetting('cameraOverlayPosition', draftPosition);
+        await saveSetting('cameraOverlayOpacity', opacity);
+        await saveSetting('cameraOverlay', enabled);
+        if (enabled && !state.screenSharing) {
+          state.pendingCameraOverlay = true;
+          await startNativeScreenShare();
+          toast('Escolha a tela para compartilhar');
+        } else {
+          await applyCameraOverlay(enabled);
+          toast('Camera settings saved');
+        }
+        updateButtons();
+      } catch (error) {
+        log('camera panel save failed', error);
+        toast('Could not save camera settings', 'error');
+      } finally {
+        close();
+      }
+    });
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) close();
     });
   }
 
@@ -913,8 +1669,83 @@
       }
     } catch (_) {}
     state.iconCache.set(name, svg);
+    const path = svg.match(/<path[^>]+d="([^"]+)"/i);
+    if (path?.[1]) state.iconSignatureCache.set(name, path[1]);
     return svg;
   }
+
+  const NATIVE_ICONS = ['monitor', 'videocam', 'desktop_access_disabled', 'call_end', 'fullscreen'];
+
+  function labelNativeIcons() {
+    for (const name of NATIVE_ICONS) {
+      const signature = state.iconSignatureCache.get(name);
+      if (!signature) continue;
+      document.querySelectorAll('span.icon').forEach((span) => {
+        if (span.getAttribute('data-neri-icon')) return;
+        if ((span.innerHTML || '').includes(signature)) {
+          span.setAttribute('data-neri-icon', name);
+        }
+      });
+    }
+    patchNativeCallEnd();
+    patchNativeFullscreen();
+  }
+
+  function patchNativeCallEnd() {
+    const bar = findCallBar();
+    if (!bar) return;
+    bar.querySelectorAll('button').forEach((btn) => {
+      if (btn.__neriCallEndPatched) return;
+      if (!btn.querySelector('span.icon[data-neri-icon="call_end"]')) return;
+      btn.__neriCallEndPatched = true;
+      btn.addEventListener('click', () => {
+        setTimeout(() => { handleScreenShareEnded(); }, 0);
+      }, true);
+    });
+  }
+
+  async function startNativeScreenShare() {
+    const bar = findCallBar();
+    if (!bar) return false;
+    const buttons = () => [...bar.querySelectorAll('button')];
+    const stop = buttons().find((b) => b.querySelector('span.icon[data-neri-icon="desktop_access_disabled"]'));
+    if (stop) {
+      stop.click();
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const monitor = buttons().find((b) => b.querySelector('span.icon[data-neri-icon="monitor"]'));
+    if (!monitor) return false;
+    monitor.click();
+    return true;
+  }
+
+  function patchNativeFullscreen() {
+    // O botão fica no container do vídeo, fora da barra voiceActions.
+    document.querySelectorAll('button').forEach((btn) => {
+      if (btn.__neriFullscreenPatched || btn.getAttribute('data-neri-extra')) return;
+      const icon = btn.querySelector('span.icon[data-neri-icon="fullscreen"]');
+      const title = (btn.getAttribute('title') || '').toLowerCase();
+      if (!icon && !/fullscreen|tela cheia|pantalla completa|plein écran/i.test(title)) return;
+      btn.__neriFullscreenPatched = true;
+      btn.addEventListener('click', (e) => {
+        e?.preventDefault?.();
+        e?.stopImmediatePropagation?.();
+        handleFullscreenClick(btn);
+      }, true);
+    });
+  }
+
+  // Captura global: cobre botões criados depois do patch e os dois vídeos
+  // (próprio e de outras pessoas) sem depender da barra da chamada.
+  document.addEventListener('click', (e) => {
+    const btn = e.target?.closest?.('button');
+    if (!btn || btn.getAttribute('data-neri-extra')) return;
+    const icon = btn.querySelector('span.icon[data-neri-icon="fullscreen"]');
+    const title = (btn.getAttribute('title') || '').toLowerCase();
+    if (!icon && !/fullscreen|tela cheia|pantalla completa|plein écran/i.test(title)) return;
+    e?.preventDefault?.();
+    handleFullscreenClick(btn);
+  }, true);
 
   function makeButton(template, name, color, act, title) {
     const button = template.cloneNode(true);
@@ -943,6 +1774,18 @@
     const host = document.getElementById('neri-extras-buttons');
     if (!host) return;
 
+    const cam = host.querySelector('[data-act="camera-overlay"]');
+    if (cam) {
+      const visible = !!(state.screenSharing || state.cameraOn);
+      cam.style.display = visible ? '' : 'none';
+      cam.classList.toggle('active', !!state.cameraOverlay);
+      cam.setAttribute('title', state.cameraOverlay
+        ? 'Camera on screen share (click to configure)'
+        : 'Show camera on screen share (click to activate)');
+      const span = cam.querySelector('span.icon');
+      if (span) span.setAttribute('data-neri-icon', state.cameraOverlay ? 'monitor' : 'videocam');
+    }
+
     const tts = host.querySelector('[data-act="tts"]');
     if (tts) {
       tts.classList.toggle('active', state.ttsEnabled);
@@ -970,11 +1813,28 @@
     host.style.flexShrink = '0';
     host.style.alignItems = 'center';
 
+    host.appendChild(makeButton(template, 'videocam', 'rgba(255,255,255,0.6)', 'camera-overlay', 'Show camera on screen share'));
     host.appendChild(makeButton(template, 'record_voice_over', 'rgba(255,255,255,0.6)', 'tts', 'Chat reader (TTS)'));
 
     host.addEventListener('click', async (event) => {
       const action = event.target.closest('[data-act]')?.getAttribute('data-act');
       if (action === 'tts') openTTSModal();
+      if (action === 'camera-overlay') {
+        // Webcam já ligada sem compartilhar: inicia o seletor de tela e,
+        // depois da escolha, compõe a câmera no stream como de costume.
+        if (!state.screenSharing && state.cameraOn) {
+          state.pendingCameraOverlay = true;
+          const started = await startNativeScreenShare();
+          if (started) {
+            toast('Escolha a tela para compartilhar');
+          } else {
+            state.pendingCameraOverlay = false;
+            openCameraOverlaySettings();
+          }
+        } else {
+          openCameraOverlaySettings();
+        }
+      }
     });
 
     const leave = [...bar.querySelectorAll('button.button')].find((b) => b.querySelector('.label'));
@@ -992,6 +1852,15 @@
     state.ttsLocale = (await API.getSetting('ttsLocale', 'auto')) || 'auto';
     state.ttsVoice = (await API.getSetting('ttsVoice', '')) || '';
     state.ttsEngine = 'edge';
+    state.overlaySettings = {
+      position: (await API.getSetting('cameraOverlayPosition', 'bottom-right')) || 'bottom-right',
+      opacity: (await API.getSetting('cameraOverlayOpacity', 100)) || 100,
+    };
+    if (!(await API.getSetting('cameraOverlayDefaultOffV3', false))) {
+      await saveSetting('cameraOverlay', false);
+      await saveSetting('cameraOverlayDefaultOffV3', true);
+    }
+    state.cameraOverlay = false;
     if (!(await API.getSetting('audioModeMigratedV2', false))) {
       state.mode = 'clean';
       await API.setSetting('screenShareAudioMode', 'clean');
@@ -1007,7 +1876,14 @@
       requestAnimationFrame(() => {
         scheduled = false;
         ensureNativeButtons();
+        labelNativeIcons();
         updateButtons();
+        if (!findCallBar()) {
+          closeVideoPlayer();
+          if (state.screenSharing || state.cameraOverlay || activeComposition) {
+            handleScreenShareEnded();
+          }
+        }
         const inCall = isInCall();
         if (state.ttsEnabled && inCall && !state.ttsWasInCall) {
           // Reentrou na call: marca mensagens atuais como vistas para não ler backlog antigo.
@@ -1027,6 +1903,8 @@
       subtree: true,
       characterData: true,
     });
+    Promise.all(NATIVE_ICONS.map((name) => iconMarkup(name).catch(() => '')))
+      .then(() => labelNativeIcons());
     setupWaylandPickerBypass();
     refresh();
     log('injetado com sucesso');

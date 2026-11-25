@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('WindowAPI', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   minimize: () => ipcRenderer.send('window-minimize'),
   toggleMaximize: () => ipcRenderer.send('window-toggle-maximize'),
+  toggleFullscreen: () => ipcRenderer.send('window-toggle-fullscreen'),
+  setFullscreen: (value) => ipcRenderer.send('window-set-fullscreen', value),
   close: () => ipcRenderer.send('window-close'),
 
   // configurações

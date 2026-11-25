@@ -3,3 +3,4 @@ dist/
 .flatpak-builder/
 *.log
 .DS_Store
+dist-win*/

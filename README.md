@@ -69,8 +69,8 @@ flatpak uninstall --user com.nerimity.desktop
 | Artefato | SHA-256 |
 | --- | --- |
 | `NerimityV2.apk` | `00ca0ce3444a7d4109a6224b779ca2aecc26234247a80024b7769b8824d68fc1` |
-| `NerimityV2.AppImage` | `d7a961d76000649d29057149b5d3e5facbcb15b448620daaa651ff15d57bd4d8` |
-| `NerimityV2.flatpak` | `9778ae026aec8731bffe77252836213c454bf55d85beeaa9ba58ffef9ca50996` |
+| `NerimityV2.AppImage` | `13a2bb4c2471977f441926cbcf5f780087064f9b74f0d01bdbf34b5a915feb77` |
+| `NerimityV2.flatpak` | `8e940a2819155dd1aa6f99c87775a39d340ea237325eb94dc9076ae3d7ff1ecd` |
 
 ---
 

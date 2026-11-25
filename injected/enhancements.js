@@ -275,15 +275,22 @@
     const autoPick = () => {
       const label = findWaylandPickerLabel();
       if (!label) return;
-      if (state.waylandPickerHandled) return;
-      state.waylandPickerHandled = true;
 
       const modal = findModalRoot(label);
-      if (modal) {
-        waylandPickerModal = modal;
-        modal.dataset.neriWaylandPicker = '1';
-        modal.style.display = 'none';
+      if (!modal) return;
+
+      // track.stop() não dispara "ended", então o flag global pode ficar
+      // marcado após a primeira transmissão. Usa a marca do próprio modal:
+      // se ele estiver visível de novo, é um novo clique em compartilhar.
+      if (modal.dataset.neriWaylandPicker === '1') {
+        if (getComputedStyle(modal).display === 'none') return;
+        delete modal.dataset.neriWaylandPicker;
       }
+
+      state.waylandPickerHandled = true;
+      waylandPickerModal = modal;
+      modal.dataset.neriWaylandPicker = '1';
+      modal.style.display = 'none';
 
       // O nome da fonte é renderizado como <span> por Text; o elemento
       // clicável é o <div> pai imediato (SourceItemContainer), não o avô.
@@ -305,12 +312,14 @@
               !/back|voltar|backbutton/i.test(text);
           }).pop();
         try { choose?.click(); } catch (_) {}
-      }, 60);
+      }, 150);
     };
 
     new MutationObserver(autoPick).observe(document.documentElement, {
       childList: true,
       subtree: true,
+      attributes: true,
+      attributeFilter: ['style'],
     });
     autoPick();
   }

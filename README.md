@@ -3,15 +3,18 @@
 Versões modificadas do Nerimity mantendo o site oficial `https://nerimity.com` carregado:
 
 - **Android (React Native):** chamadas com WebRTC nativo, vídeo recebido, compartilhamento de tela e controles de áudio.
-- **Desktop (Electron/Linux):** compartilhamento de tela pelo portal Wayland, leitura do chat em voz alta (TTS) e system tray corrigido.
+- **Desktop (Electron para Linux e Windows):** compartilhamento de tela pelo portal Wayland, leitura do chat em voz alta (TTS), câmera dentro da tela compartilhada, player de tela cheia e system tray corrigido.
 
 ## Download
 
-Baixe os arquivos da **[Release v2](https://github.com/kayronnBR/NerimityV2/releases/tag/v2)**:
+Baixe os arquivos da **[Release v3](https://github.com/kayronnBR/NerimityV2/releases/tag/v3)**:
 
-[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v2/NerimityV2.apk)
-[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v2/NerimityV2.flatpak)
-[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v2/NerimityV2.AppImage)
+[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v3/NerimityV2.apk)
+[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v3/NerimityV2.exe)
+[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v3/NerimityV2.flatpak)
+[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v3/NerimityV2.AppImage)
+
+> O `.exe` de Windows é **portátil**: baixe e execute, sem instalação.
 
 ## Instalar (fácil)
 
@@ -35,7 +38,14 @@ Baixe os arquivos da **[Release v2](https://github.com/kayronnBR/NerimityV2/rele
 
 > Sem Gear Lever: clique com o botão direito no arquivo → Propriedades → permita executar como programa → dê dois cliques.
 
+### Windows
+
+1. Baixe o `NerimityV2.exe` pelo botão acima.
+2. Execute o arquivo. Não precisa instalar nem ter permissão de administrador.
+3. O app abre normalmente; o ícone fica disponível enquanto o executável estiver aberto.
+
 ### Flatpak (arraste para o terminal)
+
 
 1. Baixe o `NerimityV2.flatpak` pelo botão acima.
 2. Abra o **Terminal**.
@@ -69,8 +79,9 @@ flatpak uninstall --user com.nerimity.desktop
 | Artefato | SHA-256 |
 | --- | --- |
 | `NerimityV2.apk` | `00ca0ce3444a7d4109a6224b779ca2aecc26234247a80024b7769b8824d68fc1` |
-| `NerimityV2.AppImage` | `921292eb4eb65f09d2acc1963d3e622b75511ad6d0d4e1d8136b668108b3a1e1` |
-| `NerimityV2.flatpak` | `dad066942a9b1a3a025101e427ce66ab9de55994ae414f60849eb6e6d6ce9c5d` |
+| `NerimityV2.exe` (Windows) | `d7bb08bca9a534c87675d662378e0def2a55b8d422712faada7004c217e42319` |
+| `NerimityV2.AppImage` | `452660869180bddd479a1ce8fa5982dacdffe74fc57ae8bc063f6c623a898a4f` |
+| `NerimityV2.flatpak` | `b659f868ee83ec6ef5ca3d91b35cc1f2a43c7c9f413616b40e6d13c2caec1245` |
 
 ---
 
@@ -124,6 +135,10 @@ Modificação do app Electron do Nerimity para corrigir compartilhamento de tela
 - **TTS na chamada:** botão nativo na barra da call para ler mensagens do chat em voz alta. Cliente Edge TTS **embutido**, sem Python e sem `edge-tts` externo. Voz automática pelo idioma do Nerimity/sistema ou voz escolhida no painel.
 - **System tray corrigido:** mostrar/ocultar, recarregar, abrir no navegador e sair; fechar a janela mantém o app na bandeja.
 - **Compatibilidade/estabilidade:** `WindowAPI` completo no preload, cache leve de metadados, correção CORS para Google Drive e flag anti-automação para Turnstile.
+- **Câmera dentro da transmissão:** a tela começa sem câmera; use o botão na chamada para ligá-la. Escolha a posição na grade 3×3 e a transparência no painel — as duas ficam salvas no PC. Um único stream composto de tela + câmera.
+- **Player de tela cheia:** abre em F11 com controles próprios (volume, mute e sair). A barra some ao clicar no vídeo, ao mover o mouse para fora ou sozinha após inatividade. Sem pause ao clicar na imagem.
+- **Windows:** release com executável portátil x64.
+
 
 ## Permissões Flatpak
 

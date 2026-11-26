@@ -5,14 +5,20 @@ Versões modificadas do Nerimity mantendo o site oficial `https://nerimity.com` 
 - **Android (React Native):** chamadas com WebRTC nativo, vídeo recebido, compartilhamento de tela e controles de áudio.
 - **Desktop (Electron para Linux e Windows):** compartilhamento de tela pelo portal Wayland, leitura do chat em voz alta (TTS), câmera dentro da tela compartilhada, player de tela cheia e system tray corrigido.
 
+## Motivo da criação do fork
+
+Este fork foi criado para dar continuidade ao cliente nativo com atualizações mais ágeis e suporte mais próximo das pessoas que utilizam o aplicativo em diferentes dispositivos. O projeto original segue em desenvolvimento, com foco atual em uma nova versão do cliente web; nesse período, o cliente nativo pode receber menos atualizações.
+
+Também existe um espaço para contribuições desenvolvidas com o auxílio de ferramentas de IA, dentro das diretrizes deste fork. O objetivo é complementar o trabalho original, reunindo correções e melhorias que ajudem a oferecer uma experiência mais estável e otimizada no Nerimity, sem substituir ou desvalorizar o projeto mantido pelos desenvolvedores originais.
+
 ## Download
 
-Baixe os arquivos da **[Release v6](https://github.com/kayronnBR/NerimityV2/releases/tag/v6)**:
+Baixe os arquivos da **[Release v7](https://github.com/kayronnBR/NerimityV2/releases/tag/v7)**:
 
-[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v6/NerimityV2.apk)
-[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v6/NerimityV2.exe)
-[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v6/NerimityV2.flatpak)
-[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v6/NerimityV2.AppImage)
+[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v7/NerimityV2.apk)
+[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v7/NerimityV2.exe)
+[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v7/NerimityV2.flatpak)
+[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v7/NerimityV2.AppImage)
 
 > O `.exe` de Windows é **portátil**: baixe e execute, sem instalação.
 
@@ -79,9 +85,9 @@ flatpak uninstall --user com.nerimity.desktop
 | Artefato | SHA-256 |
 | --- | --- |
 | `NerimityV2.apk` | `00ca0ce3444a7d4109a6224b779ca2aecc26234247a80024b7769b8824d68fc1` |
-| `NerimityV2.exe` (Windows) | `cb71dbc6695cb1f1435607acd8a27ebb57c8c8b00734a79d8a5ff01f60770e78` |
-| `NerimityV2.AppImage` | `0cc1c4da5dfc6c907b94442ad59fcf6bd6672f94f1bb342ff7677bb3ed71d418` |
-| `NerimityV2.flatpak` | `7fba524ea3d2be3af05d280c150beb57d3566cbf481bcdc3628c931dc9b1e539` |
+| `NerimityV2.exe` (Windows) | `2b2e51c7b9e2c7cde8e2089ce7167a9f42c2835eccd443b311b9b422d7e7b8c5` |
+| `NerimityV2.AppImage` | `a3d0ffe91cada563a9c34e7afb95dd6dd55fb707e4c20cf0e52ed1b968ff3c90` |
+| `NerimityV2.flatpak` | `e63878611568e95e5a011471cb7beeff99577e631dad51f4b8d638e066f87969` |
 
 ---
 
@@ -133,7 +139,7 @@ Modificação do app Electron do Nerimity para corrigir compartilhamento de tela
 - **Compartilhamento de tela no Wayland:** detecta Wayland/X11 automaticamente. No Wayland, o seletor interno do Nerimity (lista de janelas do app) é ignorado: ao clicar em compartilhar, abre diretamente o seletor nativo da sessão (`xdg-desktop-portal`). No X11, o seletor normal do Nerimity continua aparecendo.
 - **Áudio da transmissão:** depois de escolher a janela/tela no portal, aparece o popup para selecionar os apps de áudio. Se nada for marcado e você confirmar, a transmissão segue sem som e sem nova pergunta — isso vale também para X11 (não cai para o áudio do sistema). Use **Scan for audio apps** se o app desejado não aparecer.
 - **TTS na chamada:** botão nativo na barra da call para ler mensagens do chat em voz alta. Cliente Edge TTS **embutido**, sem Python e sem `edge-tts` externo. Voz automática pelo idioma do Nerimity/sistema ou voz escolhida no painel.
-- **System tray corrigido:** mostrar/ocultar, recarregar, abrir no navegador e sair; fechar a janela mantém o app na bandeja.
+- **System tray corrigido:** mostrar/ocultar, recarregar, abrir no navegador e sair; fechar a janela mantém o app na bandeja. No X11, ao reabrir pelo tray a janela volta ao topo e é repintada imediatamente, sem exigir um clique para aparecer.
 - **Compatibilidade/estabilidade:** `WindowAPI` completo no preload, cache leve de metadados, correção CORS para Google Drive e flag anti-automação para Turnstile.
 - **Câmera dentro da transmissão:** a tela começa sem câmera; use o botão na chamada para ligá-la. Escolha a posição na grade 3×3 e a transparência no painel — as duas ficam salvas no PC. Um único stream composto de tela + câmera.
 - **Player de vídeo do chat:** controles próprios no vídeo e na tela cheia (play/pause, progresso, tempo, volume, mute e fullscreen), sem controles nativos. O volume escolhido fica salvo e é aplicado aos próximos vídeos. O volume fica no canto superior esquerdo e os botões são transparentes; barra e volume somem sozinhos durante a reprodução e voltam ao mover o mouse. A barra acompanha o tamanho do vídeo e não corta o botão de tela cheia. Ao clicar no play da miniatura, o vídeo mantém o tamanho do chat/embed em vez de encolher.

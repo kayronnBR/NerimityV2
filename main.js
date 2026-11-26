@@ -472,10 +472,7 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => {
-    if (!startMinimized) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
+    if (!startMinimized) revealMainWindow();
   });
 
   mainWindow.on('close', (event) => {
@@ -985,6 +982,33 @@ function registerIpcHandlers() {
 // ---------------------------------------------------------------------------
 // System tray
 // ---------------------------------------------------------------------------
+// No X11, uma janela que volta de hide() pode aparecer sem conteúdo até o
+// próximo evento de input. Forçar um repaint imediato e outro logo após o
+// mapeamento evita o "quadro preto" ao reabrir pelo tray.
+function repaintMainWindow() {
+  const win = mainWindow;
+  const invalidate = () => {
+    if (!win || win.isDestroyed() || !win.isVisible()) return;
+    try { win.webContents.invalidate(); } catch (_) {}
+  };
+  invalidate();
+  setTimeout(invalidate, 150);
+}
+
+function revealMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  // No X11/KDE, focus() pode não trazer a janela à frente quando ela volta do
+  // tray. moveTop() garante que ela fique visível acima das outras janelas.
+  try { mainWindow.moveTop(); } catch (_) {}
+  repaintMainWindow();
+}
+
 function toggleWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
@@ -993,9 +1017,7 @@ function toggleWindow() {
   if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
     mainWindow.hide();
   } else {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
+    revealMainWindow();
   }
 }
 
@@ -1016,7 +1038,7 @@ function createTray() {
         click: () => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.reload();
-            mainWindow.show();
+            revealMainWindow();
           } else {
             createWindow();
           }
@@ -1048,13 +1070,7 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createWindow();
-    }
+    revealMainWindow();
   });
 
   app.whenReady().then(() => {

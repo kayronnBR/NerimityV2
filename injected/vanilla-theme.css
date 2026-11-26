@@ -283,6 +283,11 @@ body {
   pointer-events: none;
 }
 
+/* Volume da transmissão focada: aparece só quando a grade não está aberta. */
+#neri-share-volume { display: none; }
+#neri-share-volume.neri-share-volume-visible { display: flex; }
+#neri-share-volume .neri-player-volume { width: 92px; }
+
 /* Player próprio dos vídeos do chat: controles nativos removidos. O vídeo
    continua no fluxo do embed para ele manter a largura da miniatura. */
 .neri-chat-player {

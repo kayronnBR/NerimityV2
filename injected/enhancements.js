@@ -72,8 +72,15 @@
       // Participante que estava sendo visto em modo focado. Serve para
       // detectar o fim da transmissão e voltar sozinho para a grade.
       focusedId: '',
+      // Volume/mudo da transmissão focada, salvo entre sessões.
+      volume: 1,
+      muted: false,
+      // Depois que uma prévia é focada, o Nerimity pode reaplicar muted=true
+      // ao trocar de participante. Esse estado mantém o som escolhido.
+      forceAudio: false,
       nativeMuted: null,
       nativeVideo: null,
+      volumeControl: null,
     },
   };
 
@@ -136,29 +143,42 @@
     button.type = 'button';
     button.className = 'neri-cloudflare-open';
     button.textContent = 'Open in browser';
-    button.addEventListener('click', (event) => {
+    button.addEventListener('click', async (event) => {
       event?.preventDefault?.();
       event?.stopPropagation?.();
-      const url = window.location.href;
-      const opened = () => toast('Opened in your browser.');
-      const fallback = () => {
-        try {
-          const link = document.createElement('a');
-          link.href = url;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.click();
-          opened();
-        } catch (_) {}
-      };
+
+      // Em uma página de erro/challenge a URL atual pode não ser http(s).
+      // Nesse caso abrimos a página principal do Nerimity no navegador.
+      let url = window.location.href;
       try {
-        if (API.openExternal) {
-          Promise.resolve(API.openExternal(url)).then((ok) => (ok ? opened() : fallback())).catch(fallback);
-        } else {
-          fallback();
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          url = 'https://nerimity.com/register';
         }
       } catch (_) {
-        fallback();
+        url = 'https://nerimity.com/register';
+      }
+
+      const failed = async () => {
+        try {
+          await navigator.clipboard?.writeText?.(url);
+          toast('Could not open your browser. Link copied — paste it in the address bar.');
+        } catch (_) {
+          toast(`Could not open your browser. Open this link: ${url}`);
+        }
+      };
+
+      toast('Opening in your browser…');
+      try {
+        if (typeof API.openExternal !== 'function') {
+          await failed();
+          return;
+        }
+        const ok = await Promise.resolve(API.openExternal(url));
+        if (ok === false) await failed();
+        else toast('Opened in your browser.');
+      } catch (_) {
+        await failed();
       }
     });
 
@@ -701,9 +721,19 @@
     const now = Date.now();
     if (now - fullscreenClickAt < 400) return;
     fullscreenClickAt = now;
-    // O player próprio continua com o áudio de sempre: sai da grade antes
-    // de abrir, para que o vídeo não fique forçado a mudo.
-    if (galleryState.active) setGalleryMode(false);
+    // O player próprio continua com o áudio da transmissão em foco: sai da
+    // grade antes de abrir, sem depender do slider nativo para não ficar mudo.
+    if (galleryState.active) {
+      const selected = document.querySelector(
+        '[class*="voiceParticipantItem"][class*="selected"]'
+      );
+      const selectedId = selected ? userIdFromItem(selected) : '';
+      if (selectedId && galleryState.streams.has(selectedId)) {
+        galleryState.focusedId = selectedId;
+      }
+      setGalleryMode(false, { showVolume: false });
+      hideShareVolumeControl();
+    }
     if (openVideoPlayer(btn)) return;
     const videoFullscreen = await fullscreenVideoFromButton(btn);
     if (!videoFullscreen) triggerWindowFullscreen();
@@ -771,8 +801,18 @@
     return shareHeader()?.querySelector('[class*="videoContainer"]') || null;
   }
 
-  // Impede que o vídeo nativo toque som enquanto a galeria está aberta,
-  // sem perder o estado de volume/mudo que o Nerimity mantém no componente.
+  // Impede que o vídeo nativo toque som enquanto a galeria está aberta e,
+  // depois que uma prévia é focada, impede que o site volte a mudar o mudo
+  // sem querer. applyingNativeMute é usado para as nossas próprias mudanças.
+  let applyingNativeMute = false;
+
+  function setNativeMuted(video, value) {
+    if (!video) return;
+    applyingNativeMute = true;
+    try { video.muted = !!value; }
+    finally { applyingNativeMute = false; }
+  }
+
   function watchNativeVideoMuted(video) {
     if (!video || video.__neriGalleryMutedWatched) return;
     video.__neriGalleryMutedWatched = true;
@@ -783,12 +823,36 @@
         configurable: true,
         get() { return desc.get.call(this); },
         set(value) {
+          if (applyingNativeMute) {
+            desc.set.call(this, value);
+            return;
+          }
           if (galleryState.active && value !== true) {
             galleryState.nativeMuted = !!value;
             value = true;
+          } else if (
+            galleryState.forceAudio &&
+            this === galleryState.nativeVideo &&
+            value === true &&
+            !galleryState.muted
+          ) {
+            // O Nerimity reaplica muted ao trocar de participante. A prévia
+            // focada precisa continuar com o som que o usuário escolheu.
+            value = false;
           }
           desc.set.call(this, value);
         },
+      });
+    } catch (_) {}
+
+    try {
+      video.addEventListener('volumechange', () => {
+        if (!galleryState.forceAudio || galleryState.active) return;
+        if (video !== galleryState.nativeVideo) return;
+        const raw = Number(video.volume);
+        if (Number.isFinite(raw)) galleryState.volume = clampShareVolume(raw);
+        galleryState.muted = !!video.muted;
+        syncShareVolumeControl();
       });
     } catch (_) {}
   }
@@ -804,6 +868,99 @@
       galleryState.nativeVideo = video;
     }
     return video;
+  }
+
+  function clampShareVolume(value) {
+    const raw = Number(value);
+    return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 1;
+  }
+
+  function persistShareVolume() {
+    saveSetting('galleryVolume', galleryState.volume);
+    saveSetting('galleryMuted', galleryState.muted);
+  }
+
+  function syncShareVolumeControl() {
+    const control = galleryState.volumeControl;
+    if (!control?.isConnected) return;
+    const muteBtn = control.querySelector('button');
+    const slider = control.querySelector('input');
+    if (muteBtn) {
+      muteBtn.innerHTML = galleryState.muted ? PLAYER_ICONS.volumeOff : PLAYER_ICONS.volumeOn;
+      muteBtn.title = galleryState.muted ? 'Unmute' : 'Mute';
+    }
+    if (slider) slider.value = String(galleryState.muted ? 0 : galleryState.volume);
+  }
+
+  // Aplica à transmissão focada o volume escolhido no controle próprio, sem
+  // depender de o Nerimity mostrar ou não o slider nativo.
+  function applyShareAudio() {
+    const video = nativeShareVideo();
+    if (!video) return;
+    try { video.volume = galleryState.volume; } catch (_) {}
+    setNativeMuted(video, galleryState.muted);
+    syncShareVolumeControl();
+  }
+
+  function ensureShareVolumeControl() {
+    const container = nativeShareContainer();
+    if (!container) return null;
+    let control = container.querySelector('#neri-share-volume');
+    if (!control) {
+      control = document.createElement('div');
+      control.id = 'neri-share-volume';
+      control.className = 'neri-volume-control neri-share-volume';
+      control.setAttribute('data-neri-extra', '1');
+
+      const muteBtn = document.createElement('button');
+      muteBtn.type = 'button';
+      muteBtn.className = 'neri-player-btn';
+      muteBtn.title = 'Mute';
+      muteBtn.innerHTML = PLAYER_ICONS.volumeOn;
+      control.appendChild(muteBtn);
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'neri-player-volume';
+      slider.min = '0';
+      slider.max = '1';
+      slider.step = '0.01';
+      slider.title = 'Volume';
+      control.appendChild(slider);
+
+      muteBtn.addEventListener('click', (event) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        galleryState.muted = !galleryState.muted;
+        applyShareAudio();
+        persistShareVolume();
+      });
+      slider.addEventListener('input', (event) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        const value = clampShareVolume(event?.target?.value);
+        galleryState.volume = value;
+        galleryState.muted = value === 0;
+        applyShareAudio();
+        persistShareVolume();
+      });
+
+      try { container.appendChild(control); } catch (_) { return null; }
+    }
+    galleryState.volumeControl = control;
+    syncShareVolumeControl();
+    return control;
+  }
+
+  function showShareVolumeControl() {
+    const control = ensureShareVolumeControl();
+    if (!control) return;
+    control.classList.add('neri-share-volume-visible');
+    syncShareVolumeControl();
+  }
+
+  function hideShareVolumeControl() {
+    galleryState.volumeControl?.classList.remove('neri-share-volume-visible');
   }
 
   function sharerItems() {
@@ -1013,22 +1170,38 @@
     }
   }
 
-  function setGalleryMode(active) {
+  function setGalleryMode(active, options = {}) {
     galleryState.active = !!active;
     const container = nativeShareContainer();
     container?.classList.toggle('neri-gallery-open', !!active);
     const video = nativeShareVideo();
+
     if (active) {
       if (video && galleryState.nativeMuted === null) {
         galleryState.nativeMuted = !!video.muted;
       }
-      if (video) video.muted = true;
-    } else if (video) {
-      // Sem slider de volume = é a própria transmissão (já vem muda).
-      const hasVolume = !!container?.querySelector('[class*="volumeSlider"]');
-      video.muted = hasVolume ? galleryState.nativeMuted === true : true;
-      galleryState.nativeMuted = null;
+      galleryState.forceAudio = false;
+      if (video) setNativeMuted(video, true);
+      hideShareVolumeControl();
+      return;
     }
+
+    if (galleryState.focusedId) {
+      // Uma prévia foi focada: aquela transmissão passa a ter o som principal,
+      // com o volume escolhido pelo usuário e controle próprio no vídeo.
+      galleryState.forceAudio = true;
+      applyShareAudio();
+      if (options.showVolume === false) hideShareVolumeControl();
+      else showShareVolumeControl();
+    } else if (video) {
+      // Sem prévia focada (por exemplo, saindo da grade para o fullscreen),
+      // mantém o comportamento anterior para não ecoar a própria transmissão.
+      const hasVolume = !!container?.querySelector('[class*="volumeSlider"]');
+      setNativeMuted(video, hasVolume ? galleryState.nativeMuted === true : true);
+      hideShareVolumeControl();
+    }
+    galleryState.forceAudio = !!galleryState.focusedId;
+    galleryState.nativeMuted = null;
   }
 
   async function focusShare(id, alreadySelected = false) {
@@ -1042,6 +1215,15 @@
     setGalleryMode(false);
     const video = nativeShareVideo();
     try { video?.play?.()?.catch?.(() => {}); } catch (_) {}
+    // A troca de participante pode reaplicar muted um quadro depois.
+    applyShareAudio();
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (!galleryState.active && !videoPlayer && galleryState.focusedId === id) {
+          applyShareAudio();
+        }
+      });
+    }
   }
 
   function showShareGallery() {
@@ -1069,6 +1251,8 @@
       g.collectAttempts.clear();
       g.nativeMuted = null;
       g.active = false;
+      g.forceAudio = false;
+      hideShareVolumeControl();
       return;
     }
 
@@ -1123,12 +1307,11 @@
 
     if (ids.some((id) => !g.streams.has(id))) collectShareStreams();
 
-    const video = nativeShareVideo();
     if (g.active) {
-      container.classList.add('neri-gallery-open');
-      if (video) video.muted = true;
-    } else {
+      setGalleryMode(true);
+    } else if (!g.focusedId) {
       container.classList.remove('neri-gallery-open');
+      hideShareVolumeControl();
     }
   }
 
@@ -2660,6 +2843,11 @@
       ? Math.min(1, Math.max(0, savedVolume))
       : 1;
     state.chatVideoMuted = !!(await API.getSetting('chatVideoMuted', false));
+    const savedGalleryVolume = Number(await API.getSetting('galleryVolume', 1));
+    state.gallery.volume = Number.isFinite(savedGalleryVolume)
+      ? Math.min(1, Math.max(0, savedGalleryVolume))
+      : 1;
+    state.gallery.muted = !!(await API.getSetting('galleryMuted', false));
     state.mode = (await API.getSetting('screenShareAudioMode', 'clean')) || 'clean';
     state.ttsMode = (await API.getSetting('ttsMode', 'all')) || 'all';
     state.ttsUsers = (await API.getSetting('ttsUsers', [])) || [];

@@ -176,6 +176,46 @@ function isInternalUrl(rawUrl) {
   }
 }
 
+// Abre links no navegador padrão. shell.openExternal é o caminho normal;
+// xdg-open/gio ficam como fallback para sessões onde a chamada do Electron
+// não chega ao navegador (por exemplo, alguns ambientes X11/Flatpak).
+async function openExternalUrl(rawUrl) {
+  let target;
+  try {
+    const url = new URL(String(rawUrl));
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    target = url.href;
+  } catch {
+    return false;
+  }
+  try {
+    await shell.openExternal(target);
+    return true;
+  } catch (error) {
+    console.error('[external] falha ao abrir com Electron:', error?.message || error);
+  }
+
+  for (const command of [
+    ['xdg-open', target],
+    ['gio', 'open', target],
+  ]) {
+    try {
+      const child = spawn(command[0], command.slice(1), {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.once('error', (error) => {
+        console.error('[external] falha no fallback:', error?.message || error);
+      });
+      child.unref?.();
+      return true;
+    } catch (error) {
+      console.error('[external] fallback indisponível:', error?.message || error);
+    }
+  }
+  return false;
+}
+
 function applyAutostart() {
   // Dentro do Flatpak o caminho do executável é interno ao sandbox;
   // o autostart deve ser feito pelo portal/desktop entry, não por aqui.
@@ -458,16 +498,18 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-    }
+    openExternalUrl(url).catch((error) =>
+      console.error('[external] falha ao abrir popup:', error?.message || error)
+    );
     return { action: 'deny' };
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!isInternalUrl(url)) {
       event.preventDefault();
-      shell.openExternal(url);
+      openExternalUrl(url).catch((error) =>
+        console.error('[external] falha ao abrir link:', error?.message || error)
+      );
     }
   });
 
@@ -754,16 +796,7 @@ function registerIpcHandlers() {
 
   // Abre a página atual no navegador padrão (necessário para o challenge do
   // Cloudflare, que o Electron não consegue concluir).
-  ipcMain.handle('extra-open-external', async (_e, rawUrl) => {
-    try {
-      const url = new URL(String(rawUrl));
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-      await shell.openExternal(url.href);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  });
+  ipcMain.handle('extra-open-external', async (_e, rawUrl) => openExternalUrl(rawUrl));
 
   ipcMain.handle('extra-choose-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -1046,7 +1079,11 @@ function createTray() {
       },
       {
         label: 'Abrir no navegador',
-        click: () => shell.openExternal(START_URL),
+        click: () => {
+          openExternalUrl(START_URL).catch((error) =>
+            console.error('[external] falha no menu da bandeja:', error?.message || error)
+          );
+        },
       },
       { type: 'separator' },
       {

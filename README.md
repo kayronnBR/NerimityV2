@@ -7,12 +7,12 @@ Versões modificadas do Nerimity mantendo o site oficial `https://nerimity.com` 
 
 ## Download
 
-Baixe os arquivos da **[Release v5](https://github.com/kayronnBR/NerimityV2/releases/tag/v5)**:
+Baixe os arquivos da **[Release v6](https://github.com/kayronnBR/NerimityV2/releases/tag/v6)**:
 
-[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v5/NerimityV2.apk)
-[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v5/NerimityV2.exe)
-[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v5/NerimityV2.flatpak)
-[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v5/NerimityV2.AppImage)
+[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v6/NerimityV2.apk)
+[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v6/NerimityV2.exe)
+[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v6/NerimityV2.flatpak)
+[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v6/NerimityV2.AppImage)
 
 > O `.exe` de Windows é **portátil**: baixe e execute, sem instalação.
 
@@ -79,9 +79,9 @@ flatpak uninstall --user com.nerimity.desktop
 | Artefato | SHA-256 |
 | --- | --- |
 | `NerimityV2.apk` | `00ca0ce3444a7d4109a6224b779ca2aecc26234247a80024b7769b8824d68fc1` |
-| `NerimityV2.exe` (Windows) | `62715bf5a5fb2b6bb42ad8f90a97b63dd8aa804a66b633d5a670ae7a15405eb4` |
-| `NerimityV2.AppImage` | `45b9c0c00e934e73d2c779a25cec6cc0b4842120c166239e9d7e2d53e10511bd` |
-| `NerimityV2.flatpak` | `0d1c9c96144d13fb45870b521124449b609a88c61c9171bf82bd55e3bff63992` |
+| `NerimityV2.exe` (Windows) | `cb71dbc6695cb1f1435607acd8a27ebb57c8c8b00734a79d8a5ff01f60770e78` |
+| `NerimityV2.AppImage` | `0cc1c4da5dfc6c907b94442ad59fcf6bd6672f94f1bb342ff7677bb3ed71d418` |
+| `NerimityV2.flatpak` | `7fba524ea3d2be3af05d280c150beb57d3566cbf481bcdc3628c931dc9b1e539` |
 
 ---
 
@@ -136,7 +136,7 @@ Modificação do app Electron do Nerimity para corrigir compartilhamento de tela
 - **System tray corrigido:** mostrar/ocultar, recarregar, abrir no navegador e sair; fechar a janela mantém o app na bandeja.
 - **Compatibilidade/estabilidade:** `WindowAPI` completo no preload, cache leve de metadados, correção CORS para Google Drive e flag anti-automação para Turnstile.
 - **Câmera dentro da transmissão:** a tela começa sem câmera; use o botão na chamada para ligá-la. Escolha a posição na grade 3×3 e a transparência no painel — as duas ficam salvas no PC. Um único stream composto de tela + câmera.
-- **Player de vídeo do chat:** controles próprios no vídeo e na tela cheia (play/pause, progresso, tempo, volume, mute e fullscreen), sem controles nativos. O volume escolhido fica salvo e é aplicado aos próximos vídeos. O volume fica no canto superior esquerdo e os botões são transparentes; barra e volume somem sozinhos durante a reprodução e voltam ao mover o mouse. A barra acompanha o tamanho do vídeo e não corta o botão de tela cheia.
+- **Player de vídeo do chat:** controles próprios no vídeo e na tela cheia (play/pause, progresso, tempo, volume, mute e fullscreen), sem controles nativos. O volume escolhido fica salvo e é aplicado aos próximos vídeos. O volume fica no canto superior esquerdo e os botões são transparentes; barra e volume somem sozinhos durante a reprodução e voltam ao mover o mouse. A barra acompanha o tamanho do vídeo e não corta o botão de tela cheia. Ao clicar no play da miniatura, o vídeo mantém o tamanho do chat/embed em vez de encolher.
 - **Player de tela cheia:** abre em F11 com controles próprios (volume, mute e sair). A barra some ao clicar no vídeo, ao mover o mouse para fora ou sozinha após inatividade. Sem pause ao clicar na imagem.
 - **Cloudflare:** quando o app não passa na verificação, aparece um aviso em inglês com um botão para abrir a mesma página no navegador do usuário.
 - **Várias transmissões ao mesmo tempo:** quando alguém compartilha tela, o espaço preto do lado direito passa a mostrar a prévia de todas as transmissões ativas, incluindo a sua, todas sem som. Clicar numa prévia foca aquela transmissão do jeito de sempre (uma por pessoa, com áudio); clicar no vídeo ou apertar `Esc` volta às prévias e corta o som novamente.

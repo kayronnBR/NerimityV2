@@ -580,18 +580,19 @@
     const parent = video.parentElement;
     if (!parent) return;
 
-    // Garante que o wrapper absoluto não "vaze" para um ancestral distante.
+    // O vídeo continua no fluxo original do embed. Se ele for movido para um
+    // wrapper absoluto, o container perde a largura intrínseca e encolhe
+    // (de ~500px para 200px) quando a miniatura é trocada pelo vídeo.
+    const host = parent;
     try {
-      if (window.getComputedStyle?.(parent).position === 'static') {
-        parent.style.position = 'relative';
+      if (window.getComputedStyle?.(host).position === 'static') {
+        host.style.position = 'relative';
       }
     } catch (_) {}
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'neri-chat-player';
-    wrapper.setAttribute('data-neri-chat-player', '1');
-    try { parent.insertBefore(wrapper, video); } catch (_) { return; }
-    try { wrapper.appendChild(video); } catch (_) { return; }
+    try {
+      host.classList.add('neri-chat-player');
+      host.setAttribute('data-neri-chat-player', '1');
+    } catch (_) {}
     try { video.dataset.neriChatPlayer = '1'; } catch (_) {}
     lastChatVideo = video;
     try {
@@ -600,23 +601,20 @@
       video.addEventListener('focus', () => { lastChatVideo = video; }, true);
     } catch (_) {}
 
-    const controls = createVideoControls(video, { persist: true, volumeHost: wrapper });
-    try { wrapper.appendChild(controls); } catch (_) {}
-    wrapper.neriControls = controls;
+    const controls = createVideoControls(video, { persist: true, volumeHost: host });
+    try { host.appendChild(controls); } catch (_) {}
+    host.neriControls = controls;
 
     // Barra e volume se adaptam ao tamanho real do vídeo no chat, para que o
     // botão de tela cheia nunca fique cortado em embeds estreitos.
     const resizeControls = () => {
-      const width =
-        wrapper.getBoundingClientRect?.().width ||
-        parent.getBoundingClientRect?.().width ||
-        0;
+      const width = host.getBoundingClientRect?.().width || 0;
       controls.classList.toggle('neri-player-compact', width > 0 && width < 360);
       controls.classList.toggle('neri-player-tiny', width > 0 && width < 240);
-      const volumeBox = wrapper.querySelector('.neri-volume-control');
-      if (volumeBox) {
-        volumeBox.classList.toggle('neri-volume-compact', width > 0 && width < 360);
-        volumeBox.classList.toggle('neri-volume-tiny', width > 0 && width < 240);
+      const volumeControl = host.querySelector('.neri-volume-control');
+      if (volumeControl) {
+        volumeControl.classList.toggle('neri-volume-compact', width > 0 && width < 360);
+        volumeControl.classList.toggle('neri-volume-tiny', width > 0 && width < 240);
       }
     };
     resizeControls();
@@ -624,13 +622,13 @@
     try {
       if (typeof ResizeObserver === 'function') {
         const observer = new ResizeObserver(resizeControls);
-        observer.observe(wrapper);
-        wrapper.neriResizeObserver = observer;
+        observer.observe(host);
+        host.neriResizeObserver = observer;
       }
     } catch (_) {}
     window.addEventListener('resize', resizeControls);
 
-    const volumeBox = wrapper.querySelector('.neri-volume-control');
+    const volumeBox = host.querySelector('.neri-volume-control');
     const setInlineVisible = (visible) => {
       for (const el of [controls, volumeBox]) {
         if (!el) continue;
@@ -647,8 +645,8 @@
         setInlineVisible(false);
       }, 2500);
     };
-    wrapper.addEventListener('mousemove', showInlineControls);
-    wrapper.addEventListener('mouseleave', () => {
+    host.addEventListener('mousemove', showInlineControls);
+    host.addEventListener('mouseleave', () => {
       if (!video.paused) setInlineVisible(false);
     });
     video.addEventListener('play', showInlineControls);
@@ -658,6 +656,9 @@
       else { try { video.pause?.(); } catch (_) {} }
       showInlineControls();
     });
+    // O vídeo do site já pode ter iniciado antes de decorarmos; nesse caso
+    // mostramos a barra e agendamos a ocultação para não ficar presa na tela.
+    if (!video.paused) showInlineControls();
   }
 
   function decorateChatVideos() {

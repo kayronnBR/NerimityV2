@@ -147,7 +147,6 @@ Modificação do app Electron do Nerimity para corrigir compartilhamento de tela
 - **Cloudflare:** quando o app não passa na verificação, aparece um aviso em inglês com um botão para abrir a mesma página no navegador do usuário. Se o navegador não abrir, o link é copiado para a área de transferência com um aviso.
 - **Links externos:** abertos no navegador padrão a partir de cliques, popups e menu da bandeja, com fallback para `xdg-open`/`gio open`.
 - **Várias transmissões ao mesmo tempo:** quando alguém compartilha tela, o espaço preto do lado direito passa a mostrar a prévia de todas as transmissões ativas, incluindo a sua, todas sem som. Clicar numa prévia foca aquela transmissão com o som ativado e mostra o botão de volume no canto superior esquerdo do vídeo; o volume escolhido fica salvo. Clicar no vídeo ou apertar `Esc` volta às prévias e corta o som novamente.
-- **Indicador de chamada nos canais:** canal com pessoas em chamada ganha contorno azul e um ícone com a quantidade de participantes; o indicador some quando a chamada termina.
 - **Windows:** release com executável portátil x64.
 
 

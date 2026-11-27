@@ -2141,6 +2141,81 @@
   // Patch de mensagem de voz por clique removido: comportamento nativo do Nerimity mantido.
 
   // -------------------------------------------------------------------------
+  // Indicador de chamada na lista de canais. O Nerimity já coloca um bloco com
+  // os avatares logo abaixo do canal quando há pessoas em chamada; aproveita-
+  // se esse bloco para marcar o canal com contorno e um ícone discreto.
+  // -------------------------------------------------------------------------
+  const CHANNEL_CALL_ICON =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+
+  function channelCallInfo(link) {
+    const block = link?.nextElementSibling;
+    if (!block || block.tagName !== 'DIV' || block.previousElementSibling !== link) {
+      return null;
+    }
+    const avatars = block.querySelectorAll('.avatar-container');
+    if (!avatars.length) return null;
+
+    const parentClass = String(link.parentElement?.className || '');
+    const text = (block.textContent || '').replace(/\s+/g, ' ').trim();
+    const localized = /em chamada|in voice|en (?:voz|appel|appel vocal)|im sprachchat|в звонке|sesli aramada|在语音中/i.test(text);
+    if (!/channelList|categoryChannelList/i.test(parentClass) && !localized) {
+      return null;
+    }
+    return { block, count: avatars.length };
+  }
+
+  function updateChannelCallBadge(link, count) {
+    const content = link.querySelector('.itemContent') || link;
+    let badge = content.querySelector('.neri-channel-call-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'neri-channel-call-badge';
+      badge.setAttribute('data-neri-extra', '1');
+      badge.innerHTML = CHANNEL_CALL_ICON;
+      content.appendChild(badge);
+    }
+    if (String(badge.dataset.neriCallCount || '') !== String(count)) {
+      badge.dataset.neriCallCount = String(count);
+      badge.querySelectorAll('.neri-channel-call-count').forEach((node) => node.remove());
+      if (count > 1) {
+        const number = document.createElement('span');
+        number.className = 'neri-channel-call-count';
+        number.textContent = String(count);
+        badge.appendChild(number);
+      }
+    }
+    const title = count > 1 ? `${count} people in this call` : 'Someone is in this call';
+    badge.title = title;
+    badge.setAttribute('aria-label', title);
+    const mention = content.querySelector('[class*="mentionCount"]');
+    if (mention && badge.nextElementSibling !== mention) {
+      content.insertBefore(badge, mention);
+    }
+  }
+
+  function clearChannelCallBadge(link) {
+    link.classList.remove('neri-channel-in-call');
+    link.removeAttribute('data-neri-channel-in-call');
+    link.querySelectorAll('.neri-channel-call-badge').forEach((node) => node.remove());
+  }
+
+  function syncChannelCallIndicators() {
+    document.querySelectorAll('a[href*="/app/servers/"]').forEach((link) => {
+      const info = channelCallInfo(link);
+      if (!info) {
+        if (link.getAttribute('data-neri-channel-in-call') === '1') {
+          clearChannelCallBadge(link);
+        }
+        return;
+      }
+      link.classList.add('neri-channel-in-call');
+      link.setAttribute('data-neri-channel-in-call', '1');
+      updateChannelCallBadge(link, info.count);
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // 2) TTS: lê mensagens do chat onde a pessoa está em call.
   // -------------------------------------------------------------------------
   function isInCall() {
@@ -2874,6 +2949,9 @@
 
     let scheduled = false;
     const refresh = () => {
+      // O indicador de chamada precisa acompanhar a troca de avatares mesmo
+      // quando a janela não está focada e o requestAnimationFrame é limitado.
+      syncChannelCallIndicators();
       if (scheduled) return;
       scheduled = true;
       requestAnimationFrame(() => {

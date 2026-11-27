@@ -121,6 +121,12 @@ app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 // Cache de disco maior para acelerar recarregamentos de assets estáticos.
 app.commandLine.appendSwitch('disk-cache-size', String(512 * 1024 * 1024));
 
+// A janela fica escondida na bandeja. Sem isso o Chromium reduz a prioridade
+// do renderer e a reaparição demora para pintar o conteúdo novamente.
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+
 // ---------------------------------------------------------------------------
 // Configurações persistidas em JSON simples (sem dependências extras)
 // ---------------------------------------------------------------------------
@@ -389,6 +395,10 @@ function createWindow() {
 
   setupDisplayMedia(mainWindow.webContents.session);
 
+  // Mantém o conteúdo atualizado enquanto a janela está na bandeja, para que
+  // o clique no ícone mostre a janela já pintada.
+  try { mainWindow.webContents.setBackgroundThrottling(false); } catch (_) {}
+
   // Controles nativos de vídeo entram em fullscreen sem avisar a página via
   // requestFullscreen()/fullscreenchange. Avisamos o renderer para abrir o
   // nosso player de tela cheia com os controles do app.
@@ -514,7 +524,7 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => {
-    if (!startMinimized) revealMainWindow();
+    if (!startMinimized) revealMainWindow({ splash: false });
   });
 
   mainWindow.on('close', (event) => {
@@ -1028,9 +1038,91 @@ function repaintMainWindow() {
   setTimeout(invalidate, 150);
 }
 
-function revealMainWindow() {
+// Aviso instantâneo enquanto a janela volta da bandeja. A janela principal
+// já está carregada; o atraso visível é o tempo até o renderer pintar de novo.
+let openingSplash = null;
+let openingSplashShownAt = 0;
+
+function showOpeningSplash() {
+  if (openingSplash && !openingSplash.isDestroyed()) return;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
+    html, body { height: 100%; margin: 0; background: transparent; overflow: hidden; color: #fff; font-family: Inter, "Segoe UI", sans-serif; }
+    .card { height: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 0 18px; border: 1px solid rgba(62,136,255,.6); border-radius: 14px; background: rgba(8,8,10,.94); box-shadow: 0 12px 40px rgba(0,0,0,.65); font-size: 13px; }
+    .spinner { width: 18px; height: 18px; flex: 0 0 auto; border: 2px solid rgba(255,255,255,.18); border-top-color: #3e88ff; border-radius: 50%; animation: spin .75s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style></head><body><div class="card"><span class="spinner"></span><span>Opening Nerimity…</span></div></body></html>`;
+
+  const splash = new BrowserWindow({
+    width: 240,
+    height: 84,
+    center: true,
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    focusable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    transparent: true,
+    backgroundColor: '#00000000',
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  openingSplash = splash;
+  openingSplashShownAt = Date.now();
+  try { splash.setIgnoreMouseEvents(true); } catch (_) {}
+  splash.once('closed', () => {
+    if (openingSplash === splash) openingSplash = null;
+  });
+  splash.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {});
+  splash.show();
+}
+
+function closeOpeningSplash(immediate = false) {
+  const splash = openingSplash;
+  if (!splash) return;
+  // Mesmo quando a janela pinta rápido, mantém o aviso visível por um instante
+  // para que o clique na bandeja tenha uma resposta perceptível.
+  const remaining = immediate ? 0 : Math.max(0, 250 - (Date.now() - openingSplashShownAt));
+  if (remaining > 0) {
+    setTimeout(() => {
+      if (openingSplash === splash) closeOpeningSplash(true);
+    }, remaining);
+    return;
+  }
+  openingSplash = null;
+  if (splash.isDestroyed()) return;
+  try { splash.close(); } catch (_) {}
+}
+
+function closeOpeningSplashAfterPaint() {
+  const win = mainWindow;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(safety);
+    closeOpeningSplash();
+  };
+  const safety = setTimeout(finish, 1200);
+  try {
+    win?.webContents?.executeJavaScript(
+      'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))'
+    ).then(finish).catch(finish);
+  } catch (_) {
+    finish();
+  }
+}
+
+function revealMainWindow(options = {}) {
+  const showSplash = options.splash !== false;
+  const wasHidden =
+    !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible() || mainWindow.isMinimized();
+  if (showSplash && wasHidden) showOpeningSplash();
+
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow();
+    if (showSplash) closeOpeningSplashAfterPaint();
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -1040,6 +1132,7 @@ function revealMainWindow() {
   // tray. moveTop() garante que ela fique visível acima das outras janelas.
   try { mainWindow.moveTop(); } catch (_) {}
   repaintMainWindow();
+  if (showSplash && wasHidden) closeOpeningSplashAfterPaint();
 }
 
 function toggleWindow() {
@@ -1050,7 +1143,7 @@ function toggleWindow() {
   if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
     mainWindow.hide();
   } else {
-    revealMainWindow();
+    revealMainWindow({ splash: true });
   }
 }
 
@@ -1071,7 +1164,7 @@ function createTray() {
         click: () => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.reload();
-            revealMainWindow();
+            revealMainWindow({ splash: true });
           } else {
             createWindow();
           }
@@ -1107,7 +1200,7 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    revealMainWindow();
+    revealMainWindow({ splash: true });
   });
 
   app.whenReady().then(() => {
@@ -1133,5 +1226,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  closeOpeningSplash(true);
   releaseSharedLock();
 });

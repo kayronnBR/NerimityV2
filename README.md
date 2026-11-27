@@ -13,12 +13,12 @@ Também existe um espaço para contribuições desenvolvidas com o auxílio de f
 
 ## Download
 
-Baixe os arquivos da **[Release v8](https://github.com/kayronnBR/NerimityV2/releases/tag/v8)**:
+Baixe os arquivos da **[Release v9](https://github.com/kayronnBR/NerimityV2/releases/tag/v9)**:
 
-[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v8/NerimityV2.apk)
-[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v8/NerimityV2.exe)
-[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v8/NerimityV2.flatpak)
-[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v8/NerimityV2.AppImage)
+[![Baixar APK Android](https://img.shields.io/badge/Android%20APK-Baixar-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v9/NerimityV2.apk)
+[![Baixar para Windows](https://img.shields.io/badge/Windows-Baixar-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v9/NerimityV2.exe)
+[![Baixar Flatpak](https://img.shields.io/badge/Flatpak-Baixar-4A90D9?style=for-the-badge&logo=flatpak&logoColor=white)](https://github.com/kayronnBR/NerimityV2/releases/download/v9/NerimityV2.flatpak)
+[![Baixar AppImage](https://img.shields.io/badge/AppImage-Baixar-F9B12C?style=for-the-badge&logo=appimage&logoColor=1A1A1A)](https://github.com/kayronnBR/NerimityV2/releases/download/v9/NerimityV2.AppImage)
 
 > O `.exe` de Windows é **portátil**: baixe e execute, sem instalação.
 
@@ -139,7 +139,7 @@ Modificação do app Electron do Nerimity para corrigir compartilhamento de tela
 - **Compartilhamento de tela no Wayland:** detecta Wayland/X11 automaticamente. No Wayland, o seletor interno do Nerimity (lista de janelas do app) é ignorado: ao clicar em compartilhar, abre diretamente o seletor nativo da sessão (`xdg-desktop-portal`). No X11, o seletor normal do Nerimity continua aparecendo.
 - **Áudio da transmissão:** depois de escolher a janela/tela no portal, aparece o popup para selecionar os apps de áudio. Se nada for marcado e você confirmar, a transmissão segue sem som e sem nova pergunta — isso vale também para X11 (não cai para o áudio do sistema). Use **Scan for audio apps** se o app desejado não aparecer.
 - **TTS na chamada:** botão nativo na barra da call para ler mensagens do chat em voz alta. Cliente Edge TTS **embutido**, sem Python e sem `edge-tts` externo. Voz automática pelo idioma do Nerimity/sistema ou voz escolhida no painel.
-- **System tray corrigido:** mostrar/ocultar, recarregar, abrir no navegador e sair; fechar a janela mantém o app na bandeja. No X11, ao reabrir pelo tray a janela volta ao topo e é repintada imediatamente, sem exigir um clique para aparecer.
+- **System tray corrigido:** mostrar/ocultar, recarregar, abrir no navegador e sair; fechar a janela mantém o app na bandeja. No X11, ao reabrir pelo tray a janela volta ao topo e é repintada imediatamente, sem exigir um clique para aparecer. O renderer continua ativo em segundo plano e um aviso `Opening Nerimity…` aparece na hora, enquanto a janela termina de pintar.
 - **Compatibilidade/estabilidade:** `WindowAPI` completo no preload, cache leve de metadados, correção CORS para Google Drive e flag anti-automação para Turnstile.
 - **Câmera dentro da transmissão:** a tela começa sem câmera; use o botão na chamada para ligá-la. Escolha a posição na grade 3×3 e a transparência no painel — as duas ficam salvas no PC. Um único stream composto de tela + câmera.
 - **Player de vídeo do chat:** controles próprios no vídeo e na tela cheia (play/pause, progresso, tempo, volume, mute e fullscreen), sem controles nativos. O volume escolhido fica salvo e é aplicado aos próximos vídeos. O volume fica no canto superior esquerdo e os botões são transparentes; barra e volume somem sozinhos durante a reprodução e voltam ao mover o mouse. A barra acompanha o tamanho do vídeo e não corta o botão de tela cheia. Ao clicar no play da miniatura, o vídeo mantém o tamanho do chat/embed em vez de encolher.
@@ -147,6 +147,7 @@ Modificação do app Electron do Nerimity para corrigir compartilhamento de tela
 - **Cloudflare:** quando o app não passa na verificação, aparece um aviso em inglês com um botão para abrir a mesma página no navegador do usuário. Se o navegador não abrir, o link é copiado para a área de transferência com um aviso.
 - **Links externos:** abertos no navegador padrão a partir de cliques, popups e menu da bandeja, com fallback para `xdg-open`/`gio open`.
 - **Várias transmissões ao mesmo tempo:** quando alguém compartilha tela, o espaço preto do lado direito passa a mostrar a prévia de todas as transmissões ativas, incluindo a sua, todas sem som. Clicar numa prévia foca aquela transmissão com o som ativado e mostra o botão de volume no canto superior esquerdo do vídeo; o volume escolhido fica salvo. Clicar no vídeo ou apertar `Esc` volta às prévias e corta o som novamente.
+- **Indicador de chamada nos canais:** canal com pessoas em chamada ganha contorno azul e um ícone com a quantidade de participantes; o indicador some quando a chamada termina.
 - **Windows:** release com executável portátil x64.
 
 

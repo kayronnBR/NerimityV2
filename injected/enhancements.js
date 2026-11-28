@@ -330,6 +330,9 @@
   // player de tela cheia das transmissões.
   function createVideoControls(video, options = {}) {
     const fullscreen = !!options.fullscreen;
+    // Transmissões ao vivo usam MediaStream: não têm duração nem posição,
+    // então não faz sentido mostrar tempo/barra de progresso nelas.
+    const live = !!options.live || !!video?.srcObject;
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const signal = controller?.signal;
     const on = (el, type, fn) => {
@@ -374,28 +377,33 @@
     playBtn.innerHTML = PLAYER_ICONS.play;
     controls.appendChild(playBtn);
 
-    const current = document.createElement('span');
-    current.className = 'neri-player-time';
-    if (fullscreen) current.id = 'neri-player-current';
-    current.textContent = '0:00';
-    controls.appendChild(current);
+    let current = null;
+    let seek = null;
+    let duration = null;
+    if (!live) {
+      current = document.createElement('span');
+      current.className = 'neri-player-time';
+      if (fullscreen) current.id = 'neri-player-current';
+      current.textContent = '0:00';
+      controls.appendChild(current);
 
-    const seek = document.createElement('input');
-    seek.type = 'range';
-    seek.className = 'neri-player-seek';
-    if (fullscreen) seek.id = 'neri-player-seek';
-    seek.min = '0';
-    seek.max = '0';
-    seek.step = '0.1';
-    seek.value = '0';
-    seek.title = 'Seek';
-    controls.appendChild(seek);
+      seek = document.createElement('input');
+      seek.type = 'range';
+      seek.className = 'neri-player-seek';
+      if (fullscreen) seek.id = 'neri-player-seek';
+      seek.min = '0';
+      seek.max = '0';
+      seek.step = '0.1';
+      seek.value = '0';
+      seek.title = 'Seek';
+      controls.appendChild(seek);
 
-    const duration = document.createElement('span');
-    duration.className = 'neri-player-time';
-    if (fullscreen) duration.id = 'neri-player-duration';
-    duration.textContent = '0:00';
-    controls.appendChild(duration);
+      duration = document.createElement('span');
+      duration.className = 'neri-player-time';
+      if (fullscreen) duration.id = 'neri-player-duration';
+      duration.textContent = '0:00';
+      controls.appendChild(duration);
+    }
 
     const spacer = document.createElement('span');
     spacer.className = 'neri-player-spacer';
@@ -452,6 +460,7 @@
       volume.value = String(video.muted ? 0 : (video.volume ?? 1));
     };
     const syncTime = () => {
+      if (live || !seek || !current || !duration) return;
       const raw = Number(video.duration);
       const total = Number.isFinite(raw) && raw > 0 ? raw : 0;
       const at = Number(video.currentTime) || 0;
@@ -467,11 +476,13 @@
       else { try { video.play?.()?.catch?.(() => {}); } catch (_) {} }
       syncPlay();
     });
-    on(seek, 'input', (event) => {
-      stop(event);
-      try { video.currentTime = Number(seek.value); } catch (_) {}
-      syncTime();
-    });
+    if (!live) {
+      on(seek, 'input', (event) => {
+        stop(event);
+        try { video.currentTime = Number(seek.value); } catch (_) {}
+        syncTime();
+      });
+    }
     on(muteBtn, 'click', (event) => {
       stop(event);
       try { video.muted = !video.muted; } catch (_) {}
@@ -495,10 +506,12 @@
     on(video, 'playing', syncPlay);
     on(video, 'pause', syncPlay);
     on(video, 'ended', syncPlay);
-    on(video, 'timeupdate', syncTime);
-    on(video, 'durationchange', syncTime);
-    on(video, 'loadedmetadata', syncTime);
-    on(video, 'progress', syncTime);
+    if (!live) {
+      on(video, 'timeupdate', syncTime);
+      on(video, 'durationchange', syncTime);
+      on(video, 'loadedmetadata', syncTime);
+      on(video, 'progress', syncTime);
+    }
     on(video, 'volumechange', () => {
       syncMute();
       persistVolume();
@@ -506,7 +519,7 @@
 
     syncPlay();
     syncMute();
-    syncTime();
+    if (!live) syncTime();
     controls.destroy = () => { try { controller?.abort(); } catch (_) {} };
     return controls;
   }

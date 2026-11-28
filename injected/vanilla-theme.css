@@ -283,7 +283,9 @@ body {
   pointer-events: none;
 }
 
-/* Volume da transmissão focada: aparece só quando a grade não está aberta. */
+/* Volume da transmissão focada: aparece só quando a grade não está aberta.
+   O slider nativo do Nerimity é escondido para não ficar um segundo controle. */
+[class*="videoContainer"] [class*="volumeSlider"] { display: none !important; }
 #neri-share-volume { display: none; }
 #neri-share-volume.neri-share-volume-visible { display: flex; }
 #neri-share-volume .neri-player-volume { width: 92px; }
